@@ -27,7 +27,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
     - assets/images/arvislogo.png
     - assets/images/google_icon.png
     - assets/images/facebook_icon.png
