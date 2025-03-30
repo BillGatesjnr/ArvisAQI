@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'onboarding_screen.dart';
+import '../utils/page_transitions.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -40,8 +41,8 @@ class WelcomeScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const OnboardingScreen(),
+                    SlidePageRouteWithReverse(
+                      page: const OnboardingScreen(),
                     ),
                   );
                 },

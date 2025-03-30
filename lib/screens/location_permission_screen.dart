@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'notification_permission_screen.dart';
+import '../utils/page_transitions.dart';
 
 class LocationPermissionScreen extends StatelessWidget {
   const LocationPermissionScreen({super.key});
@@ -34,8 +35,8 @@ class LocationPermissionScreen extends StatelessWidget {
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => const NotificationPermissionScreen(),
+          SlidePageRouteWithReverse(
+            page: const NotificationPermissionScreen(),
           ),
         );
       }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'location_permission_screen.dart';
+import '../utils/page_transitions.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
@@ -97,9 +98,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
                       onPressed: () {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const LocationPermissionScreen(),
+                          SlidePageRouteWithReverse(
+                            page: const LocationPermissionScreen(),
                           ),
                         );
                       },
