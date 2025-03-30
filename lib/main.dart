@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:arvisaqi/screens/welcome_screen.dart';
+import 'package:arvisaqi/theme/app_theme.dart';
 
 void main() {
   runApp(const MyApp());
@@ -7,10 +9,14 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp();
+    return MaterialApp(
+      title: 'Arvis AQI',
+      theme: AppTheme.lightTheme,
+      home: const WelcomeScreen(),
+      debugShowCheckedModeBanner: false,
+    );
   }
 }
 
