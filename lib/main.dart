@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:arvisaqi/screens/welcome_screen.dart';
-import 'package:arvisaqi/theme/app_theme.dart';
+import 'screens/splash_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/location_permission_screen.dart';
+import 'screens/notification_permission_screen.dart';
+import 'screens/dashboard_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -12,10 +15,41 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Arvis AQI',
-      theme: AppTheme.lightTheme,
-      home: const WelcomeScreen(),
+      title: 'ArvisAQI',
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Colors.black),
+          titleTextStyle: TextStyle(
+            color: Colors.black,
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Colors.transparent,
+          selectedItemColor: Colors.blue,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+        ),
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        useMaterial3: true,
+      ),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/onboarding': (context) => const OnboardingScreen(),
+        '/location-permission': (context) => const LocationPermissionScreen(),
+        '/notification-permission': (context) =>
+            const NotificationPermissionScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+      },
     );
   }
 }
