@@ -31,7 +31,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller = AnimationController(
-      duration: const Duration(seconds: 6),
+      duration: const Duration(seconds: 7),
       vsync: this,
     );
 
@@ -67,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.forward();
 
     // Navigate to the next screen after animation
-    Timer(const Duration(seconds: 8), () {
+    Timer(const Duration(seconds: 5), () {
       Navigator.pushReplacementNamed(context, '/onboarding');
     });
   }

@@ -4,6 +4,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/location_permission_screen.dart';
 import 'screens/notification_permission_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -45,6 +46,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/': (context) => const SplashScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
+        '/privacy_policy': (context) => const PrivacyPolicyScreen(),
         '/location-permission': (context) => const LocationPermissionScreen(),
         '/notification-permission': (context) =>
             const NotificationPermissionScreen(),

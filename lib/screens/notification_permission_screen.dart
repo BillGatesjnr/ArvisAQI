@@ -148,20 +148,26 @@ class NotificationPermissionScreen extends StatelessWidget {
                         height: 56,
                         child: ElevatedButton(
                           onPressed: () {
-                            // Handle notification permission
+                            Navigator.push(
+                              context,
+                              SlidePageRouteWithReverse(
+                                page: const DashboardScreen(),
+                              ),
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
+                            minimumSize: const Size(double.infinity, 50),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(25),
                             ),
                           ),
                           child: const Text(
-                            'Get smart alerts',
+                            'Allow Notifications',
                             style: TextStyle(
+                              color: Colors.white,
                               fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -169,7 +175,7 @@ class NotificationPermissionScreen extends StatelessWidget {
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: () {
-                          Navigator.pushReplacement(
+                          Navigator.push(
                             context,
                             SlidePageRouteWithReverse(
                               page: const DashboardScreen(),
@@ -177,7 +183,7 @@ class NotificationPermissionScreen extends StatelessWidget {
                           );
                         },
                         child: const Text(
-                          'Not now',
+                          'Not Now',
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.black87,

@@ -1,173 +1,210 @@
+import 'package:arvisaqi/screens/signup_screen.dart';
 import 'package:flutter/material.dart';
-import 'signup_screen.dart';
-import 'privacy_policy_screen.dart';
-import '../utils/page_transitions.dart';
+import 'package:arvisaqi/screens/location_permission_screen.dart';
+import 'package:arvisaqi/utils/page_transitions.dart';
+import 'package:arvisaqi/screens/privacy_policy_screen.dart';
 
-class OnboardingScreen extends StatelessWidget {
+class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallScreen = screenHeight < 700;
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
 
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  final List<OnboardingContent> _contents = [
+    OnboardingContent(
+      title: 'Welcome to ArvisAQI',
+      description:
+          'Understand the air around you, everywhere you go with the largest coverage of trusted air quality data.',
+      image: 'assets/images/globe_illustration.png',
+    ),
+    OnboardingContent(
+      title: 'Real-time Air Quality',
+      description: 'Get instant updates about the air quality in your area.',
+      image: 'assets/images/onboarding2.png',
+    ),
+    OnboardingContent(
+      title: 'AI-Powered Insights',
+      description:
+          'Get health recommendations and predictions based on advanced AI analysis of air quality patterns.',
+      image: 'assets/images/onboarding3.png',
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: Colors.white,
       body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24, 0, 24, 24 + bottomPadding),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height -
-                    MediaQuery.of(context).padding.top -
-                    kToolbarHeight -
-                    bottomPadding,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    children: [
-                      SizedBox(height: isSmallScreen ? 20 : 40),
-                      Image.asset(
-                        'assets/images/globe_illustration.png',
-                        height: isSmallScreen ? 160 : 200,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: isSmallScreen ? 160 : 200,
-                            width: isSmallScreen ? 160 : 200,
-                            decoration: BoxDecoration(
-                              color: const Color.fromRGBO(33, 150, 243, 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Icon(
-                                Icons.public,
-                                size: isSmallScreen ? 80 : 100,
-                                color: Colors.blue[300],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      SizedBox(height: isSmallScreen ? 32 : 48),
-                      const Text(
-                        'Breathe better everywhere',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Understand the air around you, wherever you go with the largest coverage of trusted data.',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+        child: Column(
+          children: [
+            // Skip button
+            Align(
+              alignment: Alignment.topRight,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    SlidePageRouteWithReverse(
+                      page: const LocationPermissionScreen(),
+                    ),
+                  );
+                },
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Page indicator dots
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: const Color.fromRGBO(33, 150, 243, 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: const Color.fromRGBO(33, 150, 243, 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: isSmallScreen ? 24 : 32),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              SlidePageRouteWithReverse(
-                                page: const SignUpScreen(),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Sign up',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                ),
+              ),
+            ),
+            // PageView for sliding content
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPage = index;
+                  });
+                },
+                itemCount: _contents.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Image
+                        Image.asset(
+                          _contents[index].image,
+                          height: 300,
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            SlidePageRouteWithReverse(
-                              page: const PrivacyPolicyScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'Join as guest',
-                          style: TextStyle(
+                        const SizedBox(height: 40),
+                        // Title
+                        Text(
+                          _contents[index].title,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        // Description
+                        Text(
+                          _contents[index].description,
+                          style: const TextStyle(
                             fontSize: 16,
-                            color: Colors.black87,
+                            color: Colors.grey,
                           ),
+                          textAlign: TextAlign.center,
                         ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Page indicators
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _contents.length,
+                  (index) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentPage == index
+                          ? Colors.blue
+                          : Colors.grey.withAlpha(77),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Sign Up button
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        SlidePageRouteWithReverse(
+                          page: const SignUpScreen(),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(25),
                       ),
-                    ],
+                    ),
+                    child: const Text(
+                      'Sign Up',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        SlidePageRouteWithReverse(
+                          page: const PrivacyPolicyScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Join as guest',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
+}
+
+class OnboardingContent {
+  final String title;
+  final String description;
+  final String image;
+
+  OnboardingContent({
+    required this.title,
+    required this.description,
+    required this.image,
+  });
 }

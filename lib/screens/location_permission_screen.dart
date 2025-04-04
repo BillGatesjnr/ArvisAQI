@@ -166,7 +166,6 @@ class LocationPermissionScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
             ],
           ),
         ),
