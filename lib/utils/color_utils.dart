@@ -1,6 +1,8 @@
+// File: lib/utils/color_utils.dart
 import 'package:flutter/material.dart';
 
 class ColorUtils {
+  
   /// Convert hex color string to Flutter Color
   static Color hexToColor(String hexString) {
     final buffer = StringBuffer();
@@ -46,4 +48,5 @@ class ColorUtils {
       return 'Health warnings of emergency conditions. The entire population is more likely to be affected.';
     return 'Health alert: everyone may experience more serious health effects.';
   }
+  
 }
