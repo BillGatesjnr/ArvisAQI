@@ -8,7 +8,7 @@ Thank you for considering contributing to **ArvisAQI**, an air quality monitorin
 To begin, fork the repository and clone it to your local machine:
 
 ```sh
-git clone https://github.com/your-username/ArvisAQI.git
+git clone https://github.com/BillGatesjnr/ArvisAQI.git
 cd ArvisAQI
 ```
 
