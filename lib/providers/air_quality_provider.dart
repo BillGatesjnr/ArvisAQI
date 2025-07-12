@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../models/air_quality_data.dart';
 import '../services/air_quality_service.dart';
 
@@ -9,6 +10,7 @@ class AirQualityProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   Position? _currentPosition;
+  String? _resolvedLocality;
   List<String> _favoriteCities = [];
   AirQualityData? _selectedFavoriteCityData;
   Map<String, AirQualityData> _favoriteCitiesData = {};
@@ -19,9 +21,62 @@ class AirQualityProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   Position? get currentPosition => _currentPosition;
+  String? get resolvedLocality => _resolvedLocality;
   List<String> get favoriteCities => _favoriteCities;
   AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
   Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
+
+  /// Reverse geocode current position to get human-readable location
+  Future<void> reverseGeocodeCurrentPosition() async {
+    if (_currentPosition == null) return;
+
+    try {
+      print(
+          'DEBUG: Reverse geocoding position: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}');
+
+      final placemarks = await placemarkFromCoordinates(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+
+        // Build a human-readable address from available components
+        final List<String> addressComponents = [];
+
+        if (placemark.subLocality?.isNotEmpty == true) {
+          addressComponents.add(placemark.subLocality!);
+        }
+        if (placemark.locality?.isNotEmpty == true) {
+          addressComponents.add(placemark.locality!);
+        }
+        if (placemark.administrativeArea?.isNotEmpty == true) {
+          addressComponents.add(placemark.administrativeArea!);
+        }
+        if (placemark.country?.isNotEmpty == true) {
+          addressComponents.add(placemark.country!);
+        }
+
+        if (addressComponents.isNotEmpty) {
+          _resolvedLocality = addressComponents.join(', ');
+          print('DEBUG: Resolved locality: $_resolvedLocality');
+        } else {
+          _resolvedLocality = 'Unknown Location';
+          print('DEBUG: Could not resolve locality, using fallback');
+        }
+      } else {
+        _resolvedLocality = 'Unknown Location';
+        print('DEBUG: No placemarks found for reverse geocoding');
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print('DEBUG: Error in reverse geocoding: $e');
+      _resolvedLocality = 'Unknown Location';
+      notifyListeners();
+    }
+  }
 
   /// Fetch air quality data for current location
   Future<void> fetchCurrentLocationData() async {
@@ -47,6 +102,9 @@ class AirQualityProvider with ChangeNotifier {
       print('DEBUG: Position altitude: ${position.altitude}');
       print('DEBUG: Position speed: ${position.speed}');
       print('DEBUG: Position heading: ${position.heading}');
+
+      // Reverse geocode the position to get human-readable location
+      await reverseGeocodeCurrentPosition();
 
       // Fetch air quality data using multiple APIs
       final data = await AirQualityService.fetchAirQualityByCoordinates(
@@ -122,7 +180,7 @@ class AirQualityProvider with ChangeNotifier {
     try {
       print('DEBUG: Getting current position...');
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.best,
       );
       print('DEBUG: Position obtained successfully');
       return position;
