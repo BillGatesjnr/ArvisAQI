@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:math';
 import '../providers/air_quality_provider.dart';
 import '../utils/color_utils.dart';
+import '../models/air_quality_data.dart';
 
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({Key? key}) : super(key: key);
+  final bool showSearch;
+
+  const FavoritesScreen({Key? key, required this.showSearch}) : super(key: key);
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
@@ -14,6 +16,13 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen> {
   String? _selectedCity;
   String _searchQuery = '';
+  bool _isSearchVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSearchVisible = widget.showSearch;
+  }
 
   List<String> get _ghanaCities => [
         'Accra',
@@ -39,37 +48,31 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       ];
 
   List<String> _getFilteredCities() {
-    if (_searchQuery.isEmpty) {
-      return _ghanaCities;
-    }
-    return _ghanaCities
-        .where((city) => city.toLowerCase().contains(_searchQuery))
-        .toList();
+    return _searchQuery.isEmpty
+        ? _ghanaCities
+        : _ghanaCities
+            .where((city) =>
+                city.toLowerCase().contains(_searchQuery.toLowerCase()))
+            .toList();
   }
 
-  void _addToFavorites(
-      BuildContext context, AirQualityProvider provider, String city) {
-    if (!provider.favoriteCities.contains(city)) {
-      provider.addFavoriteCity(city);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added $city to favorites!')),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$city is already in favorites.')),
-      );
-    }
+  void _addToFavorites(BuildContext context, String city) {
+    final provider = Provider.of<AirQualityProvider>(context, listen: false);
+    provider.addFavoriteCity(city);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added $city to favorites!')),
+    );
   }
 
-  void _refreshAllFavorites(BuildContext context, AirQualityProvider provider) {
+  void _refreshAllFavorites(BuildContext context) {
+    final provider = Provider.of<AirQualityProvider>(context, listen: false);
     provider.fetchAllFavoriteCitiesData();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Refreshing all favorite cities...')),
     );
   }
 
-  Widget _buildFavoriteCitySubtitle(AirQualityProvider provider, String city) {
-    final cityData = provider.getFavoriteCityData(city);
+  Widget _buildFavoriteCitySubtitle(AirQualityData? cityData) {
     if (cityData != null) {
       final aqiColor = ColorUtils.getAqiColor(cityData.aqi);
       return Row(
@@ -85,22 +88,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           const SizedBox(width: 6),
           Text(
             'AQI: ${cityData.aqi.toStringAsFixed(0)} - ${cityData.category}',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       );
-    } else {
-      return Text(
-        'Loading AQI data...',
-        style: TextStyle(
-          color: Colors.white70,
-          fontSize: 12,
-        ),
-      );
     }
+    return Text(
+      'Loading AQI data...',
+      style: TextStyle(color: Colors.white70, fontSize: 12),
+    );
   }
 
   @override
@@ -110,14 +106,40 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'Favorites',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        title: _isSearchVisible
+            ? TextField(
+                autofocus: true,
+                style: TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Search cities...',
+                  hintStyle: TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value),
+              )
+            : const Text(
+                'Favorites',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+        actions: [
+          if (!_isSearchVisible)
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.white),
+              onPressed: () => setState(() => _isSearchVisible = true),
+            ),
+          if (_isSearchVisible)
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => setState(() {
+                _isSearchVisible = false;
+                _searchQuery = '';
+              }),
+            ),
+        ],
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: _buildFavoritesBody(),
@@ -127,14 +149,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget _buildFavoritesBody() {
     return Consumer<AirQualityProvider>(
       builder: (context, provider, child) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final horizontalPadding = screenWidth * 0.04;
         return ListView(
-          padding: EdgeInsets.all(horizontalPadding),
-          children: [
-            // Only show the favorite city section (add/remove), not AQI data
-            _buildFavoriteCitySection(context, provider),
-          ],
+          padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
+          children: [_buildFavoriteCitySection(context, provider)],
         );
       },
     );
@@ -153,11 +170,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.favorite,
-                color: Colors.red,
-                size: 20,
-              ),
+              Icon(Icons.favorite, color: Colors.red, size: 20),
               const SizedBox(width: 8),
               Text(
                 'FAVORITE CITIES',
@@ -170,22 +183,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               const Spacer(),
               if (provider.favoriteCities.isNotEmpty)
                 IconButton(
-                  onPressed: () => _refreshAllFavorites(context, provider),
-                  icon: Icon(
-                    Icons.refresh,
-                    color: Colors.white70,
-                    size: 20,
-                  ),
+                  onPressed: () => _refreshAllFavorites(context),
+                  icon: Icon(Icons.refresh, color: Colors.white70, size: 20),
                 ),
             ],
           ),
           const SizedBox(height: 16),
-          // Search Bar
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1A2F5A),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+              border: Border.all(color: Colors.blue.withAlpha(77)),
             ),
             child: TextField(
               style: TextStyle(color: Colors.white),
@@ -197,20 +205,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase();
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
           const SizedBox(height: 12),
-          // Ghanaian Cities Dropdown
           Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1A2F5A),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+              border: Border.all(color: Colors.blue.withAlpha(77)),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -222,35 +225,27 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   'Select a Ghanaian city',
                   style: TextStyle(color: Colors.white70),
                 ),
-                items: _getFilteredCities().map((String city) {
-                  return DropdownMenuItem<String>(
-                    value: city,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        city,
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedCity = newValue;
-                  });
-                },
+                items: _getFilteredCities()
+                    .map((city) => DropdownMenuItem(
+                          value: city,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(city,
+                                style: TextStyle(color: Colors.white)),
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (newValue) =>
+                    setState(() => _selectedCity = newValue),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          // Add to Favorites Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _selectedCity != null
-                  ? () {
-                      _addToFavorites(context, provider, _selectedCity!);
-                    }
+                  ? () => _addToFavorites(context, _selectedCity!)
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
@@ -274,7 +269,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // Current Favorites List
           if (provider.favoriteCities.isNotEmpty) ...[
             Text(
               'Your Favorites (${provider.favoriteCities.length}):',
@@ -287,22 +281,19 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             const SizedBox(height: 8),
             Column(
               children: provider.favoriteCities.map((city) {
+                final cityData = provider.getFavoriteCityData(city);
                 return Container(
                   margin: EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.1),
+                    color: Colors.blue.withAlpha(25),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                    border: Border.all(color: Colors.blue.withAlpha(77)),
                   ),
                   child: ListTile(
                     contentPadding:
                         EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Icon(
-                      Icons.location_city,
-                      color: Colors.blue,
-                      size: 20,
-                    ),
+                    leading:
+                        Icon(Icons.location_city, color: Colors.blue, size: 20),
                     title: Text(
                       city,
                       style: TextStyle(
@@ -311,10 +302,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    subtitle: _buildFavoriteCitySubtitle(provider, city),
-                    // Removed trailing delete icon
-                    // trailing: ...
-                    // onTap: ...
+                    subtitle: _buildFavoriteCitySubtitle(cityData),
                   ),
                 );
               }).toList(),
@@ -324,66 +312,4 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       ),
     );
   }
-}
-
-class HourlyGraphPainter extends CustomPainter {
-  final Color color;
-  final List<double> data;
-
-  HourlyGraphPainter({required this.color, this.data = const []});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color.withAlpha(128)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.fill;
-
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    path.moveTo(0, size.height);
-
-    // Use real data if available, otherwise generate mock data
-    List<Offset> points = [];
-    final dataPoints = data.isNotEmpty
-        ? data
-        : List.generate(24, (i) => 50.0 + 20.0 * sin(i * 3.14159 / 12));
-
-    for (var i = 0; i < dataPoints.length; i++) {
-      final x = (i / (dataPoints.length - 1)) * size.width;
-      final normalizedValue =
-          (dataPoints[i] - 0) / 300; // Normalize to 0-300 range
-      final y =
-          size.height * (1 - normalizedValue * 0.8); // Keep some margin at top
-      points.add(Offset(x, y));
-    }
-
-    // Draw the curve
-    if (points.isNotEmpty) {
-      path.moveTo(points.first.dx, points.first.dy);
-      for (var i = 1; i < points.length; i++) {
-        path.lineTo(points[i].dx, points[i].dy);
-      }
-    }
-
-    // Close the path for filling
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
-
-    // Draw filled area
-    canvas.drawPath(path, paint);
-
-    // Draw the line on top
-    canvas.drawPath(path, linePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
