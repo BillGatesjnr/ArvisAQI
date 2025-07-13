@@ -68,7 +68,9 @@ class _SettingsItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+
       color: const Color(0xFF142A5E).withValues(alpha: 0.6),
+
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),

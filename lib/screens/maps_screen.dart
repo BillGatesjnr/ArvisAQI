@@ -10,6 +10,7 @@ class MapsScreen extends StatelessWidget {
         'Maps Coming Soon...',
         style: TextStyle(
             color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+
       ),
     );
   }

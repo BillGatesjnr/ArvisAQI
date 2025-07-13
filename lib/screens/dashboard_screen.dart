@@ -8,10 +8,10 @@ import 'package:geolocator/geolocator.dart';
 import '../providers/air_quality_provider.dart';
 import '../utils/color_utils.dart';
 import '../models/air_quality_data.dart';
-
 import 'discover_screen.dart';
-import 'favorites_screen.dart';
-import 'edit_favorites_screen.dart';
+import 'dashboard_content.dart';
+import 'maps_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,19 +23,16 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
-  // List of major Ghanaian cities
-
-  @override
-  void initState() {
-    super.initState();
-    // Fetch data when screen loads
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AirQualityProvider>().fetchCurrentLocationData();
-    });
-  }
+  final List<Widget> _screens = [
+    const DashboardContent(),
+    const DiscoverScreen(),
+    const MapsScreen(),
+    const SettingsScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
+
     // Build the screens list here to pass context
     final screens = [
       _HomeTab(
@@ -49,12 +46,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A1A3D),
       body: screens[_currentIndex],
+
       bottomNavigationBar: _FloatingNavBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
       ),
     );
   }
+}
 
   String _getScreenTitle() {
     switch (_currentIndex) {
@@ -125,27 +124,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         }
 
-        final currentData = provider.currentData;
-        if (currentData == null) {
-          return const Center(
-            child: Text(
-              'No data available',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-              ),
-            ),
-          );
-        }
 
-        return ListView(
-          padding: EdgeInsets.all(horizontalPadding),
-          children: [
-            _buildLocationCard(
-              context,
-              data: currentData,
-              provider: provider,
+  const _FloatingNavBar({
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Container(
+        height: 70,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: const Color(0xFF142A5E).withOpacity(0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blue.withOpacity(0.2),
+              blurRadius: 12,
+              spreadRadius: 2,
             ),
+
             if (provider.error != null) ...[
               SizedBox(height: horizontalPadding),
               _buildErrorCard(context, provider.error!),
@@ -585,137 +585,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (_hasValidPollutantData(data)) ...[
             _buildPollutantsSection(data, fontSize),
             const SizedBox(height: 12),
+
           ],
-          _buildAttributionSection(data, fontSize),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPollutantsSection(AirQualityData data, double fontSize) {
-    final pollutants = [
-      {
-        'name': 'PM2.5',
-        'value': data.pollutants['pm25'] ?? 0.0,
-        'unit': 'μg/m³'
-      },
-      {
-        'name': 'PM10',
-        'value': data.pollutants['pm10'] ?? 0.0,
-        'unit': 'μg/m³'
-      },
-      {'name': 'O₃', 'value': data.pollutants['o3'] ?? 0.0, 'unit': 'ppb'},
-      {'name': 'NO₂', 'value': data.pollutants['no2'] ?? 0.0, 'unit': 'ppb'},
-      {'name': 'SO₂', 'value': data.pollutants['so2'] ?? 0.0, 'unit': 'ppb'},
-      {'name': 'CO', 'value': data.pollutants['co'] ?? 0.0, 'unit': 'ppb'},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'POLLUTANTS',
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 12 * fontSize,
-            fontWeight: FontWeight.w500,
-          ),
         ),
-        const SizedBox(height: 8),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 2.5,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-          ),
-          itemCount: pollutants.length,
-          itemBuilder: (context, index) {
-            final pollutant = pollutants[index];
-            return Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF0E2454),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    pollutant['name'] as String,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10 * fontSize,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${(pollutant['value'] as double).toStringAsFixed(1)} ${pollutant['unit']}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12 * fontSize,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAttributionSection(AirQualityData data, double fontSize) {
-    return Container(
-      padding: EdgeInsets.all(8 * fontSize),
-      decoration: BoxDecoration(
-        color: Color.fromRGBO(15, 14, 14, 0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Color.fromRGBO(255, 255, 255, 0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                color: Colors.white70,
-                size: 14 * fontSize,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'DATA SOURCE',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10 * fontSize,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Provided by: ${data.dataSource}',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 11 * fontSize,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'AQI data from: ${data.aqiMethod}',
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 11 * fontSize,
-            ),
-          ),
-        ],
       ),
     );
   }
