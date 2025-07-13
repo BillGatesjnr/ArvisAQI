@@ -30,6 +30,31 @@ class AirQualityProvider with ChangeNotifier {
   AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
   Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
 
+  /// Get average AQI for the last 24 hours
+  double get averageAqi {
+    if (_currentData?.historicalAqi.isEmpty ?? true)
+      return _currentData?.aqi ?? 0.0;
+    final historicalAqi = _currentData?.historicalAqi ?? [];
+    final sum = historicalAqi.fold(0.0, (sum, aqi) => sum + aqi);
+    return sum / historicalAqi.length;
+  }
+
+  /// Get the best AQI in the last 24 hours
+  double get bestAqi {
+    if (_currentData?.historicalAqi.isEmpty ?? true)
+      return _currentData?.aqi ?? 0.0;
+    final historicalAqi = _currentData?.historicalAqi ?? [];
+    return historicalAqi.reduce((a, b) => a < b ? a : b);
+  }
+
+  /// Get the worst AQI in the last 24 hours
+  double get worstAqi {
+    if (_currentData?.historicalAqi.isEmpty ?? true)
+      return _currentData?.aqi ?? 0.0;
+    final historicalAqi = _currentData?.historicalAqi ?? [];
+    return historicalAqi.reduce((a, b) => a > b ? a : b);
+  }
+
   /// Reverse geocode current position to get human-readable location
   Future<void> reverseGeocodeCurrentPosition() async {
     if (_currentPosition == null) return;
