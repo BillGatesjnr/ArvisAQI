@@ -10,9 +10,12 @@ class AirQualityProvider with ChangeNotifier {
   bool _isRefreshing = false;
   String? _error;
 
-  // Favorite cities data
-  final List<String> _favoriteCities = [];
-  final Map<String, AirQualityData> _favoriteCityData = {};
+  Position? _currentPosition;
+  String? _resolvedLocality;
+  List<String> _favoriteCities = [];
+  AirQualityData? _selectedFavoriteCityData;
+  Map<String, AirQualityData> _favoriteCitiesData = {};
+
 
   // Getters
   AirQualityData? get currentData => _currentData;
@@ -22,7 +25,66 @@ class AirQualityProvider with ChangeNotifier {
   bool get isRefreshing => _isRefreshing;
   String? get error => _error;
 
-  // Current location methods
+  Position? get currentPosition => _currentPosition;
+  String? get resolvedLocality => _resolvedLocality;
+  List<String> get favoriteCities => _favoriteCities;
+  AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
+  Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
+
+  /// Reverse geocode current position to get human-readable location
+  Future<void> reverseGeocodeCurrentPosition() async {
+    if (_currentPosition == null) return;
+
+    try {
+      print(
+          'DEBUG: Reverse geocoding position: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}');
+
+      final placemarks = await placemarkFromCoordinates(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+
+        // Build a human-readable address from available components
+        final List<String> addressComponents = [];
+
+        if (placemark.subLocality?.isNotEmpty == true) {
+          addressComponents.add(placemark.subLocality!);
+        }
+        if (placemark.locality?.isNotEmpty == true) {
+          addressComponents.add(placemark.locality!);
+        }
+        if (placemark.administrativeArea?.isNotEmpty == true) {
+          addressComponents.add(placemark.administrativeArea!);
+        }
+        if (placemark.country?.isNotEmpty == true) {
+          addressComponents.add(placemark.country!);
+        }
+
+        if (addressComponents.isNotEmpty) {
+          _resolvedLocality = addressComponents.join(', ');
+          print('DEBUG: Resolved locality: $_resolvedLocality');
+        } else {
+          _resolvedLocality = 'Unknown Location';
+          print('DEBUG: Could not resolve locality, using fallback');
+        }
+      } else {
+        _resolvedLocality = 'Unknown Location';
+        print('DEBUG: No placemarks found for reverse geocoding');
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print('DEBUG: Error in reverse geocoding: $e');
+      _resolvedLocality = 'Unknown Location';
+      notifyListeners();
+    }
+  }
+
+  /// Fetch air quality data for current location
+
   Future<void> fetchCurrentLocationData() async {
     _isLoading = true;
     _isRefreshing = true;
@@ -49,38 +111,88 @@ class AirQualityProvider with ChangeNotifier {
         desiredAccuracy: LocationAccuracy.best,
       );
 
-      // Get city name from coordinates
-      List<Placemark> placemarks = await placemarkFromCoordinates(
+
+      // Reverse geocode the position to get human-readable location
+      await reverseGeocodeCurrentPosition();
+
+      // Fetch air quality data using multiple APIs
+      final data = await AirQualityService.fetchAirQualityByCoordinates(
+
         position.latitude,
         position.longitude,
       );
 
-      String cityName = placemarks.first.locality ?? 'Current Location';
 
-      // Simulate API call delay (replace with actual API call)
-      await Future.delayed(const Duration(seconds: 1));
+      if (data != null) {
+        print('DEBUG: API returned data for city: ${data.city}');
+        print(
+            'DEBUG: API coordinates - Lat: ${data.latitude}, Lon: ${data.longitude}');
+        print('DEBUG: API AQI: ${data.aqi}');
 
-      // Create mock data with actual location
-      final now = DateTime.now();
-      int aqiValue = 50 + (now.second % 150);
-      _currentData = AirQualityData(
-        aqi: aqiValue.toDouble(),
-        category: _getAqiCategory(aqiValue),
-        city: cityName, // Use actual city name from geocoding
-        description: _getAqiDescription(aqiValue),
-        pollutants: {
-          'pm25': 10 + (now.second % 30).toDouble(),
-          'pm10': 20 + (now.second % 40).toDouble(),
-          'o3': 30 + (now.second % 50).toDouble(),
-          'no2': 5 + (now.second % 20).toDouble(),
-          'so2': 2 + (now.second % 10).toDouble(),
-          'co': 0.5 + (now.second % 2).toDouble(),
-        },
-        historicalAqi: List.generate(24, (i) => 30 + (now.minute + i) % 120),
-        timestamp: now,
-        color: _getAqiColor(aqiValue),
-        longitude: position.longitude,
-        latitude: position.latitude,
+        _currentData = data;
+        await _loadHistoricalData();
+      } else {
+        print('DEBUG: API returned null, using mock data');
+        // Use mock data if API fails
+        _currentData = AirQualityService.getMockData();
+        _historicalData = AirQualityService.getHistoricalData();
+        _error = 'Using demo data - API unavailable';
+      }
+    } catch (e) {
+      print('DEBUG: Exception occurred: $e');
+      _error = 'Failed to fetch air quality data: $e';
+      // Use mock data as fallback
+      _currentData = AirQualityService.getMockData();
+      _historicalData = AirQualityService.getHistoricalData();
+    }
+
+    _setLoading(false);
+  }
+
+  /// Refresh current data
+  Future<void> refreshData() async {
+    if (_currentPosition != null) {
+      await fetchCurrentLocationData();
+    }
+  }
+
+  /// Get current position with permission handling
+  Future<Position?> _getCurrentPosition() async {
+    print('DEBUG: Checking location services...');
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      print('DEBUG: Location services are disabled');
+      _error = 'Location services are disabled';
+      return null;
+    }
+    print('DEBUG: Location services are enabled');
+
+    print('DEBUG: Checking location permission...');
+    LocationPermission permission = await Geolocator.checkPermission();
+    print('DEBUG: Current permission status: $permission');
+
+    if (permission == LocationPermission.denied) {
+      print('DEBUG: Requesting location permission...');
+      permission = await Geolocator.requestPermission();
+      print('DEBUG: Permission after request: $permission');
+      if (permission == LocationPermission.denied) {
+        print('DEBUG: Location permissions are denied');
+        _error = 'Location permissions are denied';
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      print('DEBUG: Location permissions are permanently denied');
+      _error = 'Location permissions are permanently denied';
+      return null;
+    }
+
+    try {
+      print('DEBUG: Getting current position...');
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+
       );
     } catch (e) {
       _error = 'Failed to fetch air quality data: ${e.toString()}';

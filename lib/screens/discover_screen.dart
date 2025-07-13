@@ -258,6 +258,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+
+        automaticallyImplyLeading: false,
+
         title: Row(
           children: [
             Icon(Icons.school, color: Colors.blue, size: 28),
@@ -385,7 +388,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: (pollutant['color'] as Color).withOpacity(0.08),
+
+            color: (pollutant['color'] as Color).withValues(alpha: 0.08),
+
             blurRadius: 8,
             offset: Offset(0, 4),
           ),
@@ -477,7 +482,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+
+        color: color.withValues(alpha: 0.15),
+
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
