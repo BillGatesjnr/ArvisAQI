@@ -1,16 +1,14 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../models/air_quality_data.dart';
 import '../services/air_quality_service.dart';
 
 class AirQualityProvider with ChangeNotifier {
-  // Current location data
   AirQualityData? _currentData;
+  List<AirQualityData> _historicalData = [];
   bool _isLoading = false;
-  bool _isRefreshing = false;
   String? _error;
-
   Position? _currentPosition;
   String? _resolvedLocality;
   List<String> _favoriteCities = [];
@@ -19,14 +17,12 @@ class AirQualityProvider with ChangeNotifier {
 
   // Getters
   AirQualityData? get currentData => _currentData;
-  List<String> get favoriteCities => _favoriteCities;
-  List<double> get historicalData => _currentData?.historicalAqi ?? [];
+  List<AirQualityData> get historicalData => _historicalData;
   bool get isLoading => _isLoading;
-  bool get isRefreshing => _isRefreshing;
   String? get error => _error;
-
   Position? get currentPosition => _currentPosition;
   String? get resolvedLocality => _resolvedLocality;
+  List<String> get favoriteCities => _favoriteCities;
   AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
   Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
 
@@ -83,32 +79,29 @@ class AirQualityProvider with ChangeNotifier {
   }
 
   /// Fetch air quality data for current location
-
   Future<void> fetchCurrentLocationData() async {
-    _isLoading = true;
-    _isRefreshing = true;
+    _setLoading(true);
     _error = null;
-    notifyListeners();
 
     try {
-      // Check location permissions
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw Exception('Location services are disabled');
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
-        }
-      }
-
       // Get current position
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-      );
+      final position = await _getCurrentPosition();
+      if (position == null) {
+        _error = 'Unable to get current location';
+        _setLoading(false);
+        return;
+      }
+
+      _currentPosition = position;
+
+      // Debug logging
+      print(
+          'DEBUG: Current position - Lat: ${position.latitude}, Lon: ${position.longitude}');
+      print('DEBUG: Position accuracy: ${position.accuracy} meters');
+      print('DEBUG: Position timestamp: ${position.timestamp}');
+      print('DEBUG: Position altitude: ${position.altitude}');
+      print('DEBUG: Position speed: ${position.speed}');
+      print('DEBUG: Position heading: ${position.heading}');
 
       // Reverse geocode the position to get human-readable location
       await reverseGeocodeCurrentPosition();
@@ -131,6 +124,7 @@ class AirQualityProvider with ChangeNotifier {
         print('DEBUG: API returned null, using mock data');
         // Use mock data if API fails
         _currentData = AirQualityService.getMockData();
+        _historicalData = AirQualityService.getHistoricalData();
         _error = 'Using demo data - API unavailable';
       }
     } catch (e) {
@@ -138,6 +132,7 @@ class AirQualityProvider with ChangeNotifier {
       _error = 'Failed to fetch air quality data: $e';
       // Use mock data as fallback
       _currentData = AirQualityService.getMockData();
+      _historicalData = AirQualityService.getHistoricalData();
     }
 
     _setLoading(false);
@@ -150,103 +145,245 @@ class AirQualityProvider with ChangeNotifier {
     }
   }
 
-  // Add missing methods
-  Future<void> _loadHistoricalData() async {
-    // This method would load historical data from the service
-    // For now, we'll use the historical data from currentData
-    notifyListeners();
+  /// Get current position with permission handling
+  Future<Position?> _getCurrentPosition() async {
+    print('DEBUG: Checking location services...');
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      print('DEBUG: Location services are disabled');
+      _error = 'Location services are disabled';
+      return null;
+    }
+    print('DEBUG: Location services are enabled');
+
+    print('DEBUG: Checking location permission...');
+    LocationPermission permission = await Geolocator.checkPermission();
+    print('DEBUG: Current permission status: $permission');
+
+    if (permission == LocationPermission.denied) {
+      print('DEBUG: Requesting location permission...');
+      permission = await Geolocator.requestPermission();
+      print('DEBUG: Permission after request: $permission');
+      if (permission == LocationPermission.denied) {
+        print('DEBUG: Location permissions are denied');
+        _error = 'Location permissions are denied';
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      print('DEBUG: Location permissions are permanently denied');
+      _error = 'Location permissions are permanently denied';
+      return null;
+    }
+
+    try {
+      print('DEBUG: Getting current position...');
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+      print('DEBUG: Position obtained successfully');
+      return position;
+    } catch (e) {
+      print('DEBUG: Failed to get current position: $e');
+      _error = 'Failed to get current position: $e';
+      return null;
+    }
   }
 
+  /// Load historical data
+  Future<void> _loadHistoricalData() async {
+    try {
+      _historicalData = AirQualityService.getHistoricalData();
+    } catch (e) {
+      print('Error loading historical data: $e');
+      _historicalData = [];
+    }
+  }
+
+  /// Set loading state
   void _setLoading(bool loading) {
     _isLoading = loading;
-    _isRefreshing = loading;
     notifyListeners();
   }
 
-  // Favorite cities methods
+  /// Clear error
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  /// Get AQI trend (last 24 hours)
+  List<double> get aqiTrend {
+    if (_historicalData.isEmpty) return [];
+    return _historicalData.map((data) => data.aqi).toList();
+  }
+
+  /// Get average AQI for the last 24 hours
+  double get averageAqi {
+    if (_historicalData.isEmpty) return 0.0;
+    final sum = _historicalData.fold(0.0, (sum, data) => sum + data.aqi);
+    return sum / _historicalData.length;
+  }
+
+  /// Get the worst AQI in the last 24 hours
+  double get worstAqi {
+    if (_historicalData.isEmpty) return 0.0;
+    return _historicalData
+        .map((data) => data.aqi)
+        .reduce((a, b) => a > b ? a : b);
+  }
+
+  /// Get the best AQI in the last 24 hours
+  double get bestAqi {
+    if (_historicalData.isEmpty) return 0.0;
+    return _historicalData
+        .map((data) => data.aqi)
+        .reduce((a, b) => a < b ? a : b);
+  }
+
+  /// Get list of available cities (global)
+  List<String> get availableCities => [
+        'Accra',
+        'Kumasi',
+        'Tamale',
+        'Lagos',
+        'Cairo',
+        'London',
+        'New York',
+        'Tokyo',
+        'Beijing',
+        'Mumbai',
+        'Bangkok',
+        'Singapore'
+      ];
+
+  /// Fetch air quality data for a specific city
+  Future<void> fetchCityData(String city) async {
+    _setLoading(true);
+    _error = null;
+
+    try {
+      print('DEBUG: Fetching data for city: $city');
+      final data = await AirQualityService.fetchAirQualityByCity(city);
+      if (data != null) {
+        print('DEBUG: Successfully fetched data for $city');
+        _currentData = data;
+        await _loadHistoricalData();
+      } else {
+        _error = 'Unable to fetch data for $city';
+      }
+    } catch (e) {
+      print('DEBUG: Error fetching city data: $e');
+      _error = 'Failed to fetch city data: $e';
+    }
+
+    _setLoading(false);
+  }
+
+  /// Add a city to favorites
   void addFavoriteCity(String city) {
     if (!_favoriteCities.contains(city)) {
       _favoriteCities.add(city);
-      _fetchFavoriteCityData(city);
+      // Fetch data for the new favorite city
+      fetchFavoriteCityData(city);
       notifyListeners();
     }
   }
 
+  /// Remove a city from favorites
   void removeFavoriteCity(String city) {
     _favoriteCities.remove(city);
     _favoriteCitiesData.remove(city);
     notifyListeners();
   }
 
+  /// Check if a city is in favorites
+  bool isFavoriteCity(String city) {
+    return _favoriteCities.contains(city);
+  }
+
+  /// Fetch and display data for a selected favorite city
+  Future<void> fetchSelectedFavoriteCityData(String city) async {
+    _setLoading(true);
+    _error = null;
+
+    try {
+      print('DEBUG: Fetching data for favorite city: $city');
+      final data = await AirQualityService.fetchAirQualityByCity(city);
+      if (data != null) {
+        print('DEBUG: Successfully fetched data for favorite city $city');
+        _selectedFavoriteCityData = data;
+      } else {
+        print(
+            'DEBUG: Failed to fetch data for favorite city $city, using mock data');
+        // Use mock data if API fails
+        final mockData = AirQualityService.getMockData();
+        _selectedFavoriteCityData = AirQualityData(
+          aqi: mockData.aqi,
+          category: mockData.category,
+          color: mockData.color,
+          description: mockData.description,
+          pollutants: mockData.pollutants,
+          historicalAqi: mockData.historicalAqi,
+          timestamp: mockData.timestamp,
+          latitude: mockData.latitude,
+          longitude: mockData.longitude,
+          city: city,
+        );
+      }
+    } catch (e) {
+      print('DEBUG: Error fetching favorite city data: $e');
+      _error = 'Failed to fetch data for $city: $e';
+      // Use mock data as fallback
+      final mockData = AirQualityService.getMockData();
+      _selectedFavoriteCityData = AirQualityData(
+        aqi: mockData.aqi,
+        category: mockData.category,
+        color: mockData.color,
+        description: mockData.description,
+        pollutants: mockData.pollutants,
+        historicalAqi: mockData.historicalAqi,
+        timestamp: mockData.timestamp,
+        latitude: mockData.latitude,
+        longitude: mockData.longitude,
+        city: city,
+      );
+    }
+
+    _setLoading(false);
+  }
+
+  /// Clear selected favorite city data
+  void clearSelectedFavoriteCityData() {
+    _selectedFavoriteCityData = null;
+    notifyListeners();
+  }
+
+  /// Fetch AQI data for all favorite cities
+  Future<void> fetchAllFavoriteCitiesData() async {
+    for (String city in _favoriteCities) {
+      if (!_favoriteCitiesData.containsKey(city)) {
+        await fetchFavoriteCityData(city);
+      }
+    }
+  }
+
+  /// Fetch AQI data for a specific favorite city and store it
+  Future<void> fetchFavoriteCityData(String city) async {
+    try {
+      final data = await AirQualityService.fetchAirQualityByCity(city);
+      if (data != null) {
+        _favoriteCitiesData[city] = data;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('DEBUG: Error fetching data for favorite city $city: $e');
+    }
+  }
+
+  /// Get AQI data for a specific favorite city
   AirQualityData? getFavoriteCityData(String city) {
     return _favoriteCitiesData[city];
-  }
-
-  Future<void> fetchAllFavoriteCitiesData() async {
-    for (final city in _favoriteCities) {
-      await _fetchFavoriteCityData(city);
-    }
-  }
-
-  Future<void> _fetchFavoriteCityData(String city) async {
-    try {
-      // Simulate API call delay
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Mock data - replace with actual API call
-      final now = DateTime.now();
-      final aqiValue = 30 + (city.hashCode % 170);
-      _favoriteCitiesData[city] = AirQualityData(
-        aqi: aqiValue.toDouble(),
-        category: _getAqiCategory(aqiValue),
-        city: city,
-        description: _getAqiDescription(aqiValue),
-        pollutants: {
-          'pm25': 5 + (city.hashCode % 25).toDouble(),
-          'pm10': 15 + (city.hashCode % 35).toDouble(),
-          'o3': 25 + (city.hashCode % 45).toDouble(),
-          'no2': 3 + (city.hashCode % 15).toDouble(),
-          'so2': 1 + (city.hashCode % 8).toDouble(),
-          'co': 0.3 + (city.hashCode % 1.7),
-        },
-        historicalAqi: List.generate(24, (i) => 20 + (city.hashCode + i) % 180),
-        timestamp: now,
-        color: _getAqiColor(aqiValue),
-        longitude: 0.0,
-        latitude: 0.0,
-      );
-      notifyListeners();
-    } catch (e) {
-      // Handle error for specific city
-      debugPrint('Failed to fetch data for $city: ${e.toString()}');
-    }
-  }
-
-  // Helper methods
-  String _getAqiCategory(int aqi) {
-    if (aqi <= 50) return 'Good';
-    if (aqi <= 100) return 'Moderate';
-    if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
-    if (aqi <= 200) return 'Unhealthy';
-    if (aqi <= 300) return 'Very Unhealthy';
-    return 'Hazardous';
-  }
-
-  String _getAqiDescription(int aqi) {
-    if (aqi <= 50) return 'Air quality is satisfactory';
-    if (aqi <= 100) return 'Air quality is acceptable';
-    if (aqi <= 150) return 'Sensitive groups may experience health effects';
-    if (aqi <= 200) return 'Everyone may begin to experience health effects';
-    if (aqi <= 300) return 'Health warnings of emergency conditions';
-    return 'Health alert: everyone may experience serious health effects';
-  }
-
-  Color _getAqiColor(int aqi) {
-    if (aqi <= 50) return const Color(0xFF009966); // Green
-    if (aqi <= 100) return const Color(0xFFFFDE33); // Yellow
-    if (aqi <= 150) return const Color(0xFFFF9933); // Orange
-    if (aqi <= 200) return const Color(0xFFCC0033); // Red
-    if (aqi <= 300) return const Color(0xFF660099); // Purple
-    return const Color(0xFF7E0023); // Maroon
   }
 }
