@@ -258,9 +258,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-
         automaticallyImplyLeading: false,
-
         title: Row(
           children: [
             Icon(Icons.school, color: Colors.blue, size: 28),
@@ -383,14 +381,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         color: const Color(0xFF0E2454),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: (pollutant['color'] as Color).withOpacity(0.3),
+          color: (pollutant['color'] as Color).withValues(alpha: 0.3),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-
             color: (pollutant['color'] as Color).withValues(alpha: 0.08),
-
             blurRadius: 8,
             offset: Offset(0, 4),
           ),
@@ -409,7 +405,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: (pollutant['color'] as Color).withOpacity(0.2),
+                    color: (pollutant['color'] as Color).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -482,9 +478,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-
         color: color.withValues(alpha: 0.15),
-
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -539,7 +533,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: (pollutant['color'] as Color).withOpacity(0.2),
+                          color: (pollutant['color'] as Color)
+                              .withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(

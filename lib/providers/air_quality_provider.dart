@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../models/air_quality_data.dart';
+import '../services/air_quality_service.dart';
 
 class AirQualityProvider with ChangeNotifier {
   // Current location data
@@ -16,7 +17,6 @@ class AirQualityProvider with ChangeNotifier {
   AirQualityData? _selectedFavoriteCityData;
   Map<String, AirQualityData> _favoriteCitiesData = {};
 
-
   // Getters
   AirQualityData? get currentData => _currentData;
   List<String> get favoriteCities => _favoriteCities;
@@ -27,7 +27,6 @@ class AirQualityProvider with ChangeNotifier {
 
   Position? get currentPosition => _currentPosition;
   String? get resolvedLocality => _resolvedLocality;
-  List<String> get favoriteCities => _favoriteCities;
   AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
   Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
 
@@ -111,17 +110,14 @@ class AirQualityProvider with ChangeNotifier {
         desiredAccuracy: LocationAccuracy.best,
       );
 
-
       // Reverse geocode the position to get human-readable location
       await reverseGeocodeCurrentPosition();
 
       // Fetch air quality data using multiple APIs
       final data = await AirQualityService.fetchAirQualityByCoordinates(
-
         position.latitude,
         position.longitude,
       );
-
 
       if (data != null) {
         print('DEBUG: API returned data for city: ${data.city}');
@@ -135,7 +131,6 @@ class AirQualityProvider with ChangeNotifier {
         print('DEBUG: API returned null, using mock data');
         // Use mock data if API fails
         _currentData = AirQualityService.getMockData();
-        _historicalData = AirQualityService.getHistoricalData();
         _error = 'Using demo data - API unavailable';
       }
     } catch (e) {
@@ -143,7 +138,6 @@ class AirQualityProvider with ChangeNotifier {
       _error = 'Failed to fetch air quality data: $e';
       // Use mock data as fallback
       _currentData = AirQualityService.getMockData();
-      _historicalData = AirQualityService.getHistoricalData();
     }
 
     _setLoading(false);
@@ -156,83 +150,17 @@ class AirQualityProvider with ChangeNotifier {
     }
   }
 
-  /// Get current position with permission handling
-  Future<Position?> _getCurrentPosition() async {
-    print('DEBUG: Checking location services...');
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      print('DEBUG: Location services are disabled');
-      _error = 'Location services are disabled';
-      return null;
-    }
-    print('DEBUG: Location services are enabled');
-
-    print('DEBUG: Checking location permission...');
-    LocationPermission permission = await Geolocator.checkPermission();
-    print('DEBUG: Current permission status: $permission');
-
-    if (permission == LocationPermission.denied) {
-      print('DEBUG: Requesting location permission...');
-      permission = await Geolocator.requestPermission();
-      print('DEBUG: Permission after request: $permission');
-      if (permission == LocationPermission.denied) {
-        print('DEBUG: Location permissions are denied');
-        _error = 'Location permissions are denied';
-        return null;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      print('DEBUG: Location permissions are permanently denied');
-      _error = 'Location permissions are permanently denied';
-      return null;
-    }
-
-    try {
-      print('DEBUG: Getting current position...');
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
-
-      );
-    } catch (e) {
-      _error = 'Failed to fetch air quality data: ${e.toString()}';
-      // Fallback to mock data if geocoding fails
-      if (_currentData == null) {
-        _createFallbackData();
-      }
-    } finally {
-      _isLoading = false;
-      _isRefreshing = false;
-      notifyListeners();
-    }
+  // Add missing methods
+  Future<void> _loadHistoricalData() async {
+    // This method would load historical data from the service
+    // For now, we'll use the historical data from currentData
+    notifyListeners();
   }
 
-  void _createFallbackData() {
-    final now = DateTime.now();
-    int aqiValue = 50 + (now.second % 150);
-    _currentData = AirQualityData(
-      aqi: aqiValue.toDouble(),
-      category: _getAqiCategory(aqiValue),
-      city: 'Current Location',
-      description: _getAqiDescription(aqiValue),
-      pollutants: {
-        'pm25': 10 + (now.second % 30).toDouble(),
-        'pm10': 20 + (now.second % 40).toDouble(),
-        'o3': 30 + (now.second % 50).toDouble(),
-        'no2': 5 + (now.second % 20).toDouble(),
-        'so2': 2 + (now.second % 10).toDouble(),
-        'co': 0.5 + (now.second % 2).toDouble(),
-      },
-      historicalAqi: List.generate(24, (i) => 30 + (now.minute + i) % 120),
-      timestamp: now,
-      color: _getAqiColor(aqiValue),
-      longitude: 0.0,
-      latitude: 0.0,
-    );
-  }
-
-  Future<void> refreshData() async {
-    await fetchCurrentLocationData();
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    _isRefreshing = loading;
+    notifyListeners();
   }
 
   // Favorite cities methods
@@ -246,12 +174,12 @@ class AirQualityProvider with ChangeNotifier {
 
   void removeFavoriteCity(String city) {
     _favoriteCities.remove(city);
-    _favoriteCityData.remove(city);
+    _favoriteCitiesData.remove(city);
     notifyListeners();
   }
 
   AirQualityData? getFavoriteCityData(String city) {
-    return _favoriteCityData[city];
+    return _favoriteCitiesData[city];
   }
 
   Future<void> fetchAllFavoriteCitiesData() async {
@@ -268,7 +196,7 @@ class AirQualityProvider with ChangeNotifier {
       // Mock data - replace with actual API call
       final now = DateTime.now();
       final aqiValue = 30 + (city.hashCode % 170);
-      _favoriteCityData[city] = AirQualityData(
+      _favoriteCitiesData[city] = AirQualityData(
         aqi: aqiValue.toDouble(),
         category: _getAqiCategory(aqiValue),
         city: city,

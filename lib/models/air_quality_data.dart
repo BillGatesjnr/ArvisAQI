@@ -83,7 +83,7 @@ class AirQualityData {
     return {
       'aqi': aqi,
       'category': category,
-      'color': color.value,
+      'color': color.toARGB32(),
       'city': city,
       'description': description,
       'pollutants': pollutants,
