@@ -10,7 +10,8 @@ import '../utils/color_utils.dart';
 import '../models/air_quality_data.dart';
 
 import 'discover_screen.dart';
-import 'edit_favorites_screen.dart' as edit_fav;
+import 'favorites_screen.dart';
+import 'edit_favorites_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -797,8 +798,7 @@ class _HomeTab extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) =>
-                        const edit_fav.FavoritesScreen(showSearch: true)),
+                    builder: (context) => const EditFavoritesScreen()),
               );
             },
           ),
@@ -809,8 +809,7 @@ class _HomeTab extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (context) =>
-                          const edit_fav.FavoritesScreen(showSearch: false)),
+                      builder: (context) => const FavoritesScreen()),
                 );
               },
             ),
@@ -1091,7 +1090,6 @@ class _MapsScreenState extends State<_MapsScreen> {
   final MapController _mapController = MapController();
   LatLng _currentPosition = LatLng(37.7749, -122.4194);
   bool _loadingLocation = true;
-  bool _mapReady = false;
   double _currentZoom = 13.0;
   final List<Marker> _markers = [];
   bool _showHeatmap = false;
@@ -1101,6 +1099,13 @@ class _MapsScreenState extends State<_MapsScreen> {
   void initState() {
     super.initState();
     _initializeMap();
+
+    // Move to user location after map is initialized
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _goToUserLocation();
+      }
+    });
   }
 
   Future<void> _initializeMap() async {
@@ -1443,12 +1448,10 @@ class _MapsScreenState extends State<_MapsScreen> {
   }
 
   void _goToUserLocation() {
-    if (_mapReady) {
-      try {
-        _mapController.move(_currentPosition, _currentZoom);
-      } catch (e) {
-        debugPrint('Map controller error: $e');
-      }
+    try {
+      _mapController.move(_currentPosition, _currentZoom);
+    } catch (e) {
+      debugPrint('Map controller not ready: $e');
     }
   }
 
@@ -1514,13 +1517,6 @@ class _MapsScreenState extends State<_MapsScreen> {
                     initialZoom: _currentZoom,
                     maxZoom: 18,
                     minZoom: 3,
-                    onMapReady: () {
-                      setState(() {
-                        _mapReady = true;
-                      });
-                      // Move to user location once map is ready
-                      _goToUserLocation();
-                    },
                     onPositionChanged: (position, hasGesture) {
                       if (hasGesture) {
                         setState(() => _currentZoom = position.zoom ?? 13.0);
@@ -1568,36 +1564,20 @@ class _MapsScreenState extends State<_MapsScreen> {
               children: [
                 FloatingActionButton.small(
                   heroTag: 'zoom_in',
-                  onPressed: _mapReady
-                      ? () {
-                          try {
-                            _mapController.move(
-                              _mapController.camera.center,
-                              _mapController.camera.zoom + 1,
-                            );
-                          } catch (e) {
-                            debugPrint('Zoom in error: $e');
-                          }
-                        }
-                      : null,
+                  onPressed: () => _mapController.move(
+                    _mapController.camera.center,
+                    _mapController.camera.zoom + 1,
+                  ),
                   backgroundColor: Colors.blue,
                   child: const Icon(Icons.add),
                 ),
                 const SizedBox(height: 8),
                 FloatingActionButton.small(
                   heroTag: 'zoom_out',
-                  onPressed: _mapReady
-                      ? () {
-                          try {
-                            _mapController.move(
-                              _mapController.camera.center,
-                              _mapController.camera.zoom - 1,
-                            );
-                          } catch (e) {
-                            debugPrint('Zoom out error: $e');
-                          }
-                        }
-                      : null,
+                  onPressed: () => _mapController.move(
+                    _mapController.camera.center,
+                    _mapController.camera.zoom - 1,
+                  ),
                   backgroundColor: Colors.blue,
                   child: const Icon(Icons.remove),
                 ),
