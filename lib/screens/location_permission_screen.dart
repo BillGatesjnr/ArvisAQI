@@ -70,7 +70,7 @@ class LocationPermissionScreen extends StatelessWidget {
 
       // If we got here, permissions are granted
       if (context.mounted) {
-        Navigator.pushReplacementNamed(context, '/dashboard');
+        Navigator.pushReplacementNamed(context, '/notification-permission');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
