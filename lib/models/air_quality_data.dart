@@ -83,7 +83,8 @@ class AirQualityData {
     return {
       'aqi': aqi,
       'category': category,
-      'color': color.toARGB32(),
+      // ignore: deprecated_member_use, this is intentional for serialization
+      'color': color.value, // Color integer value for serialization
       'city': city,
       'description': description,
       'pollutants': pollutants,
