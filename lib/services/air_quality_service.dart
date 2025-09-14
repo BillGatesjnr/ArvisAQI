@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/air_quality_data.dart';
+import 'package:flutter/material.dart'; // Added for Color
 
 class AirQualityService {
   // Multiple API endpoints for better coverage
@@ -121,7 +122,7 @@ class AirQualityService {
         print('DEBUG: Trying AirVisual API for city: $city');
         // AirVisual doesn't support city search directly, so we'll use coordinates
         // For now, we'll use the city's approximate coordinates
-        final cityCoords = _getCityCoordinates(city);
+        final cityCoords = getCityCoordinates(city);
         if (cityCoords != null) {
           final airVisualData =
               await _fetchFromAirVisual(cityCoords[0], cityCoords[1]);
@@ -144,7 +145,7 @@ class AirQualityService {
       // 3. Try OpenWeatherMap API as last resort
       if (_openWeatherApiKey.isNotEmpty) {
         print('DEBUG: Trying OpenWeatherMap API for city: $city');
-        final cityCoords = _getCityCoordinates(city);
+        final cityCoords = getCityCoordinates(city);
         if (cityCoords != null) {
           final openWeatherData =
               await _fetchFromOpenWeatherMap(cityCoords[0], cityCoords[1]);
@@ -158,7 +159,7 @@ class AirQualityService {
 
       // If all APIs fail, return realistic mock data
       print('DEBUG: All APIs failed for $city, using realistic mock data');
-      final cityCoords = _getCityCoordinates(city);
+      final cityCoords = getCityCoordinates(city);
       if (cityCoords != null) {
         return _getRealisticMockData(cityCoords[0], cityCoords[1], city);
       }
@@ -191,37 +192,76 @@ class AirQualityService {
         final cityName = await _getCityNameFromCoordinates(latitude, longitude);
         print('DEBUG: Reverse geocoded city name: $cityName');
 
-        final airQualityData = AirQualityData.fromJson(jsonData);
+        // Extract pollutants from OpenWeatherMap response
+        Map<String, double> pollutants = {};
+        double aqi = 0.0;
+        String category = 'Unknown';
+        Color color = Colors.grey;
+        String description = '';
+        if (jsonData['list'] != null && jsonData['list'].isNotEmpty) {
+          final components = jsonData['list'][0]['components'] ?? {};
+          pollutants = {
+            'pm25': (components['pm2_5'] ?? 0.0).toDouble(),
+            'pm10': (components['pm10'] ?? 0.0).toDouble(),
+            'o3': (components['o3'] ?? 0.0).toDouble(),
+            'no2': (components['no2'] ?? 0.0).toDouble(),
+            'so2': (components['so2'] ?? 0.0).toDouble(),
+            'co': (components['co'] ?? 0.0).toDouble(),
+          };
+          // OpenWeatherMap provides AQI in 'main.aqi' (1-5 scale), but we can use PM2.5 for US AQI
+          aqi = _calculateAqiFromPm25(pollutants['pm25'] ?? 0.0);
+          category = AirQualityData.getCategory(aqi);
+          color = AirQualityData.getColor(aqi);
+          description = AirQualityData.getDescription(aqi);
+        }
 
-        // Log PM2.5 and AQI calculation details
-        print(
-            'DEBUG: OpenWeatherMap PM2.5: ${airQualityData.pollutants?['pm25']} μg/m³');
-        print('DEBUG: Calculated AQI from PM2.5: ${airQualityData.aqi}');
-
-        // Create a new AirQualityData object with the correct city name and attribution
-        final correctedData = AirQualityData(
-          aqi: airQualityData.aqi,
-          category: airQualityData.category,
-          color: airQualityData.color,
-          description: airQualityData.description,
-          pollutants: airQualityData.pollutants,
-          historicalAqi: airQualityData.historicalAqi,
-          timestamp: airQualityData.timestamp,
-          latitude: airQualityData.latitude,
-          longitude: airQualityData.longitude,
+        final airQualityData = AirQualityData(
+          aqi: aqi,
+          category: category,
+          color: color,
+          description: description,
+          pollutants: pollutants,
+          historicalAqi: <double>[],
+          timestamp: DateTime.now(),
+          latitude: latitude,
+          longitude: longitude,
           city: cityName,
           dataSource: 'OpenWeatherMap',
           aqiMethod: 'Satellite & Ground Data',
         );
 
-        print('DEBUG: OpenWeather parsed city: ${correctedData.city}');
-        return correctedData;
+        print(
+            'DEBUG: OpenWeatherMap PM2.5: ${airQualityData.pollutants?['pm25']} μg/m³');
+        print('DEBUG: Calculated AQI from PM2.5: ${airQualityData.aqi}');
+        print('DEBUG: OpenWeather parsed city: ${airQualityData.city}');
+        return airQualityData;
       }
       return null;
     } catch (e) {
       print('DEBUG: Error fetching from OpenWeatherMap: $e');
       return null;
     }
+  }
+
+  /// Calculate US AQI from PM2.5 concentration (μg/m³)
+  static double _calculateAqiFromPm25(double pm25) {
+    // US EPA breakpoints for PM2.5
+    final breakpoints = [
+      [0.0, 12.0, 0, 50],
+      [12.1, 35.4, 51, 100],
+      [35.5, 55.4, 101, 150],
+      [55.5, 150.4, 151, 200],
+      [150.5, 250.4, 201, 300],
+      [250.5, 350.4, 301, 400],
+      [350.5, 500.4, 401, 500],
+    ];
+    for (final bp in breakpoints) {
+      if (pm25 >= bp[0] && pm25 <= bp[1]) {
+        return ((bp[3] - bp[2]) / (bp[1] - bp[0]) * (pm25 - bp[0]) + bp[2])
+            .roundToDouble();
+      }
+    }
+    return 0.0;
   }
 
   /// Fetch data from WAQI API
@@ -238,9 +278,72 @@ class AirQualityService {
             'DEBUG: WAQI response data: ${jsonData.toString().substring(0, jsonData.toString().length > 500 ? 500 : jsonData.toString().length)}...');
 
         if (jsonData['status'] == 'ok' && jsonData['data'] != null) {
-          final airQualityData = AirQualityData.fromJson(jsonData);
-          print('DEBUG: WAQI parsed city: ${airQualityData.city}');
-          return airQualityData;
+          final data = jsonData['data'];
+          final iaqi = data['iaqi'] ?? {};
+          Map<String, double> waqiPollutants = {
+            'pm25': (iaqi['pm25']?['v'] ?? 0.0).toDouble(),
+            'pm10': (iaqi['pm10']?['v'] ?? 0.0).toDouble(),
+            'o3': (iaqi['o3']?['v'] ?? 0.0).toDouble(),
+            'no2': (iaqi['no2']?['v'] ?? 0.0).toDouble(),
+            'so2': (iaqi['so2']?['v'] ?? 0.0).toDouble(),
+            'co': (iaqi['co']?['v'] ?? 0.0).toDouble(),
+          };
+          final aqi = (data['aqi'] ?? 0.0).toDouble();
+          final category = AirQualityData.getCategory(aqi);
+          final color = AirQualityData.getColor(aqi);
+          final description = AirQualityData.getDescription(aqi);
+          final cityName = data['city']?['name'] ?? city;
+          final lat = data['city']?['geo']?[0]?.toDouble() ?? 0.0;
+          final lon = data['city']?['geo']?[1]?.toDouble() ?? 0.0;
+
+          // Try to fetch OpenWeatherMap pollutants for the same coordinates
+          Map<String, double> openWeatherPollutants = {};
+          try {
+            final openWeatherData = await _fetchFromOpenWeatherMap(lat, lon);
+            if (openWeatherData != null &&
+                openWeatherData.pollutants != null &&
+                openWeatherData.pollutants!.isNotEmpty) {
+              openWeatherPollutants = openWeatherData.pollutants!;
+              print(
+                  'DEBUG: Got OpenWeatherMap pollutants for WAQI: $openWeatherPollutants');
+            }
+          } catch (e) {
+            print(
+                'DEBUG: Exception fetching OpenWeatherMap pollutants for WAQI: $e');
+          }
+
+          // Use the first nonzero pollutants map, fallback to the other, else empty
+          bool waqiHasNonZero = waqiPollutants.values.any((v) => v > 0);
+          bool openWeatherHasNonZero =
+              openWeatherPollutants.values.any((v) => v > 0);
+          Map<String, double> pollutants;
+          if (waqiHasNonZero) {
+            pollutants = waqiPollutants;
+            print('DEBUG: Using WAQI pollutants for WAQI AQI: $pollutants');
+          } else if (openWeatherHasNonZero) {
+            pollutants = openWeatherPollutants;
+            print(
+                'DEBUG: Using OpenWeatherMap pollutants for WAQI AQI: $pollutants');
+          } else {
+            pollutants = {};
+            print(
+                'DEBUG: No valid pollutants from WAQI or OpenWeatherMap for WAQI AQI');
+          }
+
+          return AirQualityData(
+            aqi: aqi,
+            category: category,
+            color: color,
+            description: description,
+            pollutants: pollutants,
+            historicalAqi: <double>[],
+            timestamp: DateTime.now(),
+            latitude: lat,
+            longitude: lon,
+            city: cityName,
+            dataSource: 'WAQI',
+            aqiMethod: 'Ground Monitoring Network',
+          );
         }
       }
       return null;
@@ -272,12 +375,64 @@ class AirQualityService {
 
           final aqi = pollution['aqius']?.toDouble() ?? 0.0;
 
+          // Try to fetch OpenWeatherMap and WAQI pollutants for the same coordinates
+          Map<String, double> openWeatherPollutants = {};
+          Map<String, double> waqiPollutants = {};
+          try {
+            final openWeatherData =
+                await _fetchFromOpenWeatherMap(latitude, longitude);
+            if (openWeatherData != null &&
+                openWeatherData.pollutants != null &&
+                openWeatherData.pollutants!.isNotEmpty) {
+              openWeatherPollutants = openWeatherData.pollutants!;
+              print(
+                  'DEBUG: Got OpenWeatherMap pollutants for AirVisual: $openWeatherPollutants');
+            }
+          } catch (e) {
+            print(
+                'DEBUG: Exception fetching OpenWeatherMap pollutants for AirVisual: $e');
+          }
+          try {
+            // Find nearest city for WAQI
+            final nearestCity = _findNearestCity(latitude, longitude);
+            final waqiData = await _fetchFromWAQI(nearestCity);
+            if (waqiData != null &&
+                waqiData.pollutants != null &&
+                waqiData.pollutants!.isNotEmpty) {
+              waqiPollutants = waqiData.pollutants!;
+              print(
+                  'DEBUG: Got WAQI pollutants for AirVisual: $waqiPollutants');
+            }
+          } catch (e) {
+            print(
+                'DEBUG: Exception fetching WAQI pollutants for AirVisual: $e');
+          }
+
+          // Use the first nonzero pollutants map, fallback to the other, else AirVisual, else empty
+          bool openWeatherHasNonZero =
+              openWeatherPollutants.values.any((v) => v > 0);
+          bool waqiHasNonZero = waqiPollutants.values.any((v) => v > 0);
+          Map<String, double> pollutants;
+          if (openWeatherHasNonZero) {
+            pollutants = openWeatherPollutants;
+            print(
+                'DEBUG: Using OpenWeatherMap pollutants for AirVisual AQI: $pollutants');
+          } else if (waqiHasNonZero) {
+            pollutants = waqiPollutants;
+            print(
+                'DEBUG: Using WAQI pollutants for AirVisual AQI: $pollutants');
+          } else {
+            pollutants = _getValidPollutants(pollution);
+            print(
+                'DEBUG: No valid OpenWeatherMap or WAQI pollutants, using AirVisual pollutants: $pollutants');
+          }
+
           return AirQualityData(
             aqi: aqi,
             category: AirQualityData.getCategory(aqi),
             color: AirQualityData.getColor(aqi),
             description: AirQualityData.getDescription(aqi),
-            pollutants: _getValidPollutants(pollution),
+            pollutants: pollutants,
             historicalAqi: <double>[],
             timestamp: DateTime.now(),
             latitude: data['location']['coordinates'][1].toDouble(),
@@ -575,7 +730,7 @@ class AirQualityService {
   }
 
   /// Helper to get coordinates for a city (approximate)
-  static List<double>? _getCityCoordinates(String city) {
+  static List<double>? getCityCoordinates(String city) {
     // This is a simplified approach. For accurate coordinates,
     // you'd need a geocoding service or a more extensive database.
     // For now, we'll return approximate coordinates for major cities.

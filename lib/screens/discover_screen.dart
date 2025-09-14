@@ -8,10 +8,6 @@ class DiscoverScreen extends StatefulWidget {
 }
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  String? _selectedFilter;
-
   final List<Map<String, dynamic>> _pollutants = [
     {
       'name': 'PM2.5',
@@ -193,6 +189,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     },
   ];
 
+  String? _selectedFilter;
   final List<String> _filters = [
     'All',
     'High Risk',
@@ -201,35 +198,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     'Cardiovascular',
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _selectedFilter = 'All';
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.trim().toLowerCase();
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
   List<Map<String, dynamic>> get _filteredPollutants {
     List<Map<String, dynamic>> filtered = _pollutants;
-
-    // Filter by search query
-    if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((p) {
-        return p['name'].toString().toLowerCase().contains(_searchQuery) ||
-            p['fullName'].toString().toLowerCase().contains(_searchQuery);
-      }).toList();
-    }
-
-    // Filter by selected filter
     if (_selectedFilter != null && _selectedFilter != 'All') {
       if (_selectedFilter == 'High Risk') {
         filtered = filtered.where((p) => p['riskLevel'] == 'High').toList();
@@ -247,14 +217,24 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             .toList();
       }
     }
-
     return filtered;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFilter = 'All';
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A1A3A),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -278,7 +258,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         child: Column(
           children: [
             _buildHeader(),
-            _buildSearchBar(),
             _buildFilterChips(),
             Expanded(child: _buildPollutantsList()),
           ],
@@ -295,28 +274,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         style: TextStyle(
           color: Colors.white70,
           fontSize: 16,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: TextField(
-        controller: _searchController,
-        style: TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: 'Search pollutants...',
-          hintStyle: TextStyle(color: Colors.white54),
-          prefixIcon: Icon(Icons.search, color: Colors.white54),
-          filled: true,
-          fillColor: const Color(0xFF132A4F),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 16),
         ),
       ),
     );
@@ -341,7 +298,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               ),
               selected: isSelected,
               selectedColor: Colors.blue,
-              backgroundColor: const Color(0xFF132A4F),
+              backgroundColor:
+                  Theme.of(context).colorScheme.surface.withAlpha(25),
               onSelected: (_) {
                 setState(() {
                   _selectedFilter = filter;
@@ -378,15 +336,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0E2454),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: (pollutant['color'] as Color).withValues(alpha: 0.3),
+          color: (pollutant['color'] as Color).withAlpha(77),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: (pollutant['color'] as Color).withValues(alpha: 0.08),
+            color: (pollutant['color'] as Color).withAlpha(20),
             blurRadius: 8,
             offset: Offset(0, 4),
           ),
@@ -405,7 +363,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: (pollutant['color'] as Color).withValues(alpha: 0.2),
+                    color: (pollutant['color'] as Color).withAlpha(51),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -478,7 +436,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color.withAlpha(38),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -504,8 +462,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Widget _buildPollutantDetailsSheet(Map<String, dynamic> pollutant) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0E2454),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
@@ -533,8 +491,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: (pollutant['color'] as Color)
-                              .withValues(alpha: 0.2),
+                          color: (pollutant['color'] as Color).withAlpha(51),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(

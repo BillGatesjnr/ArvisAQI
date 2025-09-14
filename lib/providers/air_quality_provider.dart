@@ -3,6 +3,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../models/air_quality_data.dart';
 import '../services/air_quality_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class AirQualityProvider with ChangeNotifier {
   AirQualityData? _currentData;
@@ -17,6 +19,14 @@ class AirQualityProvider with ChangeNotifier {
 
   // Getters
   AirQualityData? get currentData => _currentData;
+  set currentData(AirQualityData? data) {
+    _currentData = data;
+    if (data != null) {
+      _cacheCurrentData(data);
+    }
+    notifyListeners();
+  }
+
   List<AirQualityData> get historicalData => _historicalData;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -25,6 +35,11 @@ class AirQualityProvider with ChangeNotifier {
   List<String> get favoriteCities => _favoriteCities;
   AirQualityData? get selectedFavoriteCityData => _selectedFavoriteCityData;
   Map<String, AirQualityData> get favoriteCitiesData => _favoriteCitiesData;
+
+  Future<void> _cacheCurrentData(AirQualityData data) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('cached_current_aqi', jsonEncode(data.toJson()));
+  }
 
   /// Reverse geocode current position to get human-readable location
   Future<void> reverseGeocodeCurrentPosition() async {
@@ -118,12 +133,12 @@ class AirQualityProvider with ChangeNotifier {
             'DEBUG: API coordinates - Lat: ${data.latitude}, Lon: ${data.longitude}');
         print('DEBUG: API AQI: ${data.aqi}');
 
-        _currentData = data;
+        currentData = data;
         await _loadHistoricalData();
       } else {
         print('DEBUG: API returned null, using mock data');
         // Use mock data if API fails
-        _currentData = AirQualityService.getMockData();
+        currentData = AirQualityService.getMockData();
         _historicalData = AirQualityService.getHistoricalData();
         _error = 'Using demo data - API unavailable';
       }
@@ -131,7 +146,7 @@ class AirQualityProvider with ChangeNotifier {
       print('DEBUG: Exception occurred: $e');
       _error = 'Failed to fetch air quality data: $e';
       // Use mock data as fallback
-      _currentData = AirQualityService.getMockData();
+      currentData = AirQualityService.getMockData();
       _historicalData = AirQualityService.getHistoricalData();
     }
 
@@ -268,7 +283,7 @@ class AirQualityProvider with ChangeNotifier {
       final data = await AirQualityService.fetchAirQualityByCity(city);
       if (data != null) {
         print('DEBUG: Successfully fetched data for $city');
-        _currentData = data;
+        currentData = data;
         await _loadHistoricalData();
       } else {
         _error = 'Unable to fetch data for $city';

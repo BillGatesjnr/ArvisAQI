@@ -7,14 +7,21 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const offWhite = Color(0xFFF8F9FB);
     return Scaffold(
+      backgroundColor: offWhite,
       appBar: AppBar(
+        backgroundColor: offWhite,
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: () {
               // Implement sign in
             },
-            child: const Text('Sign in'),
+            child: Text('Sign in',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                    fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -25,11 +32,12 @@ class WelcomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 40),
-              const Text(
+              Text(
                 "I'd like to",
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.secondary,
                 ),
               ),
               const SizedBox(height: 40),
@@ -93,12 +101,15 @@ class WelcomeScreen extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .secondary
+                      .withAlpha((0.13 * 255).toInt()),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   icon,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Theme.of(context).colorScheme.secondary,
                 ),
               ),
               const SizedBox(width: 16),
@@ -108,9 +119,10 @@ class WelcomeScreen extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.secondary,
                       ),
                     ),
                     if (subtitle.isNotEmpty)

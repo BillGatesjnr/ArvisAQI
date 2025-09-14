@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:provider/provider.dart';
 import 'dart:math';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../providers/air_quality_provider.dart';
 import '../utils/color_utils.dart';
 import '../models/air_quality_data.dart';
+import '../services/air_quality_service.dart';
+import 'package:flutter/services.dart';
 
 import 'discover_screen.dart';
 import 'favorites_screen.dart';
 import 'edit_favorites_screen.dart';
+import 'maps_screen.dart';
+import 'settings_screen.dart';
+import 'local_sensor_screen.dart';
+
+export 'dashboard_screen.dart' show RouteObserverProvider;
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,8 +26,14 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
   int _currentIndex = 0;
+  bool _showFavoritesHint = false;
+  int _lastFavoritesCount = 0;
+  bool _pendingShowHint = false;
+
+  RouteObserver<PageRoute>? _routeObserver;
+  PageRoute? _myRoute;
 
   // List of major Ghanaian cities
 
@@ -35,6 +47,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Register this widget as a route observer
+    ModalRoute? route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      _routeObserver = RouteObserverProvider.of(context);
+      _routeObserver?.subscribe(this, route);
+      _myRoute = route;
+    }
+    final provider = context.watch<AirQualityProvider>();
+    final favCount = provider.favoriteCities.length;
+    debugPrint(
+        '[DASHBOARD] didChangeDependencies: favCount=$_lastFavoritesCount -> $favCount, _pendingShowHint=$_pendingShowHint, _showFavoritesHint=$_showFavoritesHint');
+    // Only set pending flag if we are not on dashboard
+    if (_lastFavoritesCount == 0 && favCount > 0 && !_pendingShowHint) {
+      _pendingShowHint = true;
+      debugPrint('[DASHBOARD] Set _pendingShowHint=true (favorites added)');
+    }
+    _lastFavoritesCount = favCount;
+  }
+
+  @override
+  void dispose() {
+    if (_myRoute != null) {
+      _routeObserver?.unsubscribe(this);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    debugPrint(
+        '[DASHBOARD] didPopNext: _pendingShowHint=$_pendingShowHint, _showFavoritesHint=$_showFavoritesHint');
+    // Called when coming back to this screen
+    if (_pendingShowHint) {
+      setState(() {
+        _showFavoritesHint = true;
+        _pendingShowHint = false;
+      });
+      debugPrint('[DASHBOARD] Showing animated hint after pop');
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) {
+          setState(() {
+            _showFavoritesHint = false;
+          });
+          debugPrint('[DASHBOARD] Hiding animated hint after delay');
+        }
+      });
+    }
+  }
+
+  Future<bool> _onWillPop() async {
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Confirm Exit',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+        ),
+        content: const Text(
+          'Close the app?',
+          style: TextStyle(fontSize: 14),
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No', style: TextStyle(fontSize: 14)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Yes', style: TextStyle(fontSize: 14)),
+          ),
+        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      ),
+    );
+    if (shouldExit == true) {
+      SystemNavigator.pop();
+      return false;
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     // Build the screens list here to pass context
     final screens = [
@@ -44,14 +142,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       const DiscoverScreen(),
       _buildLocationScreen(),
+      const LocalSensorScreen(),
       _buildSettingsScreen(),
     ];
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A1A3D),
-      body: screens[_currentIndex],
-      bottomNavigationBar: _FloatingNavBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+
+    // Use a longer duration for the hint
+    const hintDuration = Duration(seconds: 7);
+
+    // Robust: Show hint after build if pending
+    if (_pendingShowHint && !_showFavoritesHint) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pendingShowHint) {
+          setState(() {
+            _showFavoritesHint = true;
+            _pendingShowHint = false;
+          });
+          debugPrint('[DASHBOARD] Showing animated hint after build');
+          Future.delayed(hintDuration, () {
+            if (mounted) {
+              setState(() {
+                _showFavoritesHint = false;
+              });
+              debugPrint(
+                  '[DASHBOARD] Hiding animated hint after delay (build)');
+            }
+          });
+        }
+      });
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        final shouldPop = await _onWillPop();
+        if (shouldPop) {
+          Navigator.of(context).maybePop();
+        }
+      },
+      child: RouteObserverProvider(
+        observer: RouteObserver<PageRoute>(),
+        child: Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          body: Stack(
+            children: [
+              screens[_currentIndex],
+              if (_showFavoritesHint)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 32,
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: _showFavoritesHint ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 600),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withAlpha(221),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(33),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.swipe,
+                                  color: Colors.white, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Swipe to see favorites',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          bottomNavigationBar: _FloatingNavBar(
+            currentIndex: _currentIndex,
+            onTap: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+              if (index == 0 && _pendingShowHint) {
+                setState(() {
+                  _showFavoritesHint = true;
+                  _pendingShowHint = false;
+                });
+                debugPrint(
+                    '[DASHBOARD] Showing animated hint after tab switch');
+                Future.delayed(hintDuration, () {
+                  if (mounted) {
+                    setState(() {
+                      _showFavoritesHint = false;
+                    });
+                    debugPrint(
+                        '[DASHBOARD] Hiding animated hint after delay (tab switch)');
+                  }
+                });
+              }
+            },
+          ),
+        ),
       ),
     );
   }
@@ -63,8 +274,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 1:
         return 'Discover';
       case 2:
-        return 'Location';
+        return 'AQI Map';
       case 3:
+        return 'Local Sensor';
+      case 4:
         return 'Settings';
       default:
         return 'Dashboard';
@@ -86,6 +299,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         if (provider.error != null && provider.currentData == null) {
+          // Make error message clickable
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -105,18 +319,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  provider.error!,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
+                GestureDetector(
+                  onTap: () async {
+                    await showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                        title: const Text('Location Required',
+                            style: TextStyle(color: Colors.white)),
+                        content: const Text(
+                          'Location access is required for air quality data.\n\nPlease enable location services and grant permission in your device settings.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('Cancel',
+                                style: TextStyle(color: Colors.white)),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              Navigator.of(ctx).pop();
+                              await Geolocator.openLocationSettings();
+                            },
+                            child: const Text('Open Location Settings',
+                                style: TextStyle(color: Colors.blueAccent)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withAlpha(33),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withAlpha(46)),
+                      ),
+                      child: Text(
+                        provider.error!,
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontSize: 16,
+                          decoration: TextDecoration.underline,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () {
                     provider.fetchCurrentLocationData();
+                    provider.fetchAllFavoriteCitiesData();
                   },
                   child: Text('Retry'),
                 ),
@@ -176,11 +435,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     padding: const EdgeInsets.only(bottom: 16.0),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF142A5E),
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
                           width: 1.5,
-                          color: aqiColor.withValues(alpha: 0.22),
+                          color: aqiColor.withAlpha(56),
                         ),
                       ),
                       padding: EdgeInsets.symmetric(
@@ -251,7 +510,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 width: circleSize,
                                 height: circleSize,
                                 decoration: BoxDecoration(
-                                  color: aqiColor.withValues(alpha: 0.18),
+                                  color: aqiColor.withAlpha(46),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Center(
@@ -259,7 +518,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     cityData.aqi.toStringAsFixed(0),
                                     style: TextStyle(
                                       color: aqiColor,
-                                      fontSize: 54 * fontSize,
+                                      fontSize: (cityData.aqi > 99 ? 40 : 54) *
+                                          fontSize,
                                       fontWeight: FontWeight.bold,
                                       letterSpacing: 1.2,
                                       height: 1.0,
@@ -309,7 +569,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     padding: const EdgeInsets.only(bottom: 16.0),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0E245A),
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       padding: const EdgeInsets.all(24),
@@ -335,56 +595,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildLocationScreen() {
-    return _MapsScreen();
+    return const MapsScreen();
   }
 
   Widget _buildSettingsScreen() {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A1A3D),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _SettingsItem(
-            icon: Icons.notifications,
-            title: 'Notifications',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: Icons.location_on,
-            title: 'Location Settings',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: Icons.privacy_tip,
-            title: 'Privacy Policy',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: Icons.help,
-            title: 'Help & Support',
-            onTap: () {},
-          ),
-          _SettingsItem(
-            icon: Icons.info,
-            title: 'About ARVISAQI',
-            onTap: () {},
-          ),
-        ],
-      ),
-    );
+    return const SettingsScreen();
   }
 
   Widget _buildLocationCard(
@@ -399,196 +614,205 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final aqiColor = ColorUtils.getAqiColor(data.aqi);
     final circleSize = screenWidth * 0.32;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF142A5E),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          width: 1.5,
-          color: aqiColor.withValues(alpha: 0.22),
-        ),
-        // No boxShadow for a flat, modern look
+    return FutureBuilder<AirQualityData?>(
+      future: AirQualityService.fetchAirQualityByCoordinates(
+        data.latitude,
+        data.longitude,
       ),
-      padding: EdgeInsets.symmetric(
-        horizontal: cardPadding * 1.5,
-        vertical: cardPadding * 1.5,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Location info
-          Row(
+      builder: (context, snapshot) {
+        final altData = snapshot.data;
+        // Always use altData for pollutants if available
+        final pollutantsData = altData ?? data;
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              width: 1.5,
+              color: aqiColor.withAlpha(56),
+            ),
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: cardPadding * 1.5,
+            vertical: cardPadding * 1.5,
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (provider.resolvedLocality != null) ...[
-                      Row(
-                        children: [
-                          Icon(Icons.my_location,
-                              color: Colors.blue, size: 18 * fontSize),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              provider.resolvedLocality!,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16 * fontSize,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.2,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                    ],
-                    Row(
+              // Location info, AQI, etc. (from main data)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.location_on,
-                            color: Colors.white70, size: 16 * fontSize),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            'AQI Source: ${data.city}',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13 * fontSize,
-                              fontWeight: FontWeight.w400,
+                        if (provider.resolvedLocality != null) ...[
+                          Row(
+                            children: [
+                              Icon(Icons.my_location,
+                                  color: Colors.blue, size: 18 * fontSize),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  provider.resolvedLocality!,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16 * fontSize,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.2,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                        ],
+                        Row(
+                          children: [
+                            Icon(Icons.location_on,
+                                color: Colors.white70, size: 16 * fontSize),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                'AQI Source: ${data.city}',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13 * fontSize,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            overflow: TextOverflow.ellipsis,
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: circleSize,
+                    height: circleSize,
+                    decoration: BoxDecoration(
+                      color: aqiColor.withAlpha(46),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        data.aqi.toStringAsFixed(0),
+                        style: TextStyle(
+                          color: aqiColor,
+                          fontSize: (data.aqi > 99 ? 40 : 54) * fontSize,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data.category,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18 * fontSize,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatTimestamp(data.timestamp),
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12 * fontSize,
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          // AQI indicator and value/category row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Big AQI value in a transparent circle
-              Container(
-                width: circleSize,
-                height: circleSize,
-                decoration: BoxDecoration(
-                  color: aqiColor.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    data.aqi.toStringAsFixed(0),
-                    style: TextStyle(
-                      color: aqiColor,
-                      fontSize: 54 * fontSize,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                      height: 1.0,
+              const SizedBox(height: 18),
+              // Forecast Row (from main data)
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'FORECAST',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12 * fontSize,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Daily Avg: ${provider.averageAqi.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11 * fontSize,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data.category,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18 * fontSize,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
+                  Expanded(
+                    flex: 2,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _DayIndicator(
+                          day: 'MIN',
+                          value: provider.bestAqi.toStringAsFixed(0),
+                          color: Colors.green,
+                          fontSize: fontSize,
+                        ),
+                        _DayIndicator(
+                          day: 'AVG',
+                          value: provider.averageAqi.toStringAsFixed(0),
+                          color: aqiColor,
+                          fontSize: fontSize,
+                        ),
+                        _DayIndicator(
+                          day: 'MAX',
+                          value: provider.worstAqi.toStringAsFixed(0),
+                          color: Colors.red,
+                          fontSize: fontSize,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatTimestamp(data.timestamp),
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12 * fontSize,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 18),
+              // Pollutants section always from altData (WAQI/OpenWeatherMap)
+              ...[
+                _buildPollutantsSection(pollutantsData, fontSize),
+                const SizedBox(height: 12),
+              ],
+              _buildAttributionSection(data, fontSize),
             ],
           ),
-          const SizedBox(height: 18),
-          // Forecast Row
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FORECAST',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12 * fontSize,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Daily Avg: ${provider.averageAqi.toStringAsFixed(0)}',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11 * fontSize,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _DayIndicator(
-                      day: 'MIN',
-                      value: provider.bestAqi.toStringAsFixed(0),
-                      color: Colors.green,
-                      fontSize: fontSize,
-                    ),
-                    _DayIndicator(
-                      day: 'AVG',
-                      value: provider.averageAqi.toStringAsFixed(0),
-                      color: aqiColor,
-                      fontSize: fontSize,
-                    ),
-                    _DayIndicator(
-                      day: 'MAX',
-                      value: provider.worstAqi.toStringAsFixed(0),
-                      color: Colors.red,
-                      fontSize: fontSize,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          if (_hasValidPollutantData(data)) ...[
-            _buildPollutantsSection(data, fontSize),
-            const SizedBox(height: 12),
-          ],
-          _buildAttributionSection(data, fontSize),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -613,64 +837,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'POLLUTANTS',
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 12 * fontSize,
-            fontWeight: FontWeight.w500,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 0),
+          child: Text(
+            'POLLUTANTS',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12 * fontSize,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-        const SizedBox(height: 8),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 2.5,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
+        SizedBox(
+          height: 180,
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.3,
+            ),
+            itemCount: pollutants.length,
+            itemBuilder: (context, index) {
+              final pollutant = pollutants[index];
+              return Container(
+                decoration: BoxDecoration(
+                  color: Color.fromRGBO(15, 14, 14, 0.18),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Color.fromRGBO(255, 255, 255, 0.1)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      pollutant['name'] as String,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 8.5 * fontSize,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${(pollutant['value'] as double).toStringAsFixed(1)} ${pollutant['unit']}',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10 * fontSize,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-          itemCount: pollutants.length,
-          itemBuilder: (context, index) {
-            final pollutant = pollutants[index];
-            return Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF0E2454),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    pollutant['name'] as String,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10 * fontSize,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${(pollutant['value'] as double).toStringAsFixed(1)} ${pollutant['unit']}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12 * fontSize,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
         ),
       ],
     );
   }
 
   Widget _buildAttributionSection(AirQualityData data, double fontSize) {
+    // Determine pollutant source for attribution
+    String pollutantSource = 'Unknown';
+    if (data.dataSource == 'AirVisual (IQAir)') {
+      // Try to infer pollutant source from the pollutants map keys
+      if (data.pollutants != null && data.pollutants!.isNotEmpty) {
+        // OpenWeatherMap pollutants have 'pm25' and 'pm10' keys, but so do others; check for typical OWM values
+        // If all values are integers, likely WAQI; if some are decimals, likely OWM
+        final values = data.pollutants!.values;
+        if (values.any((v) => v > 0 && v < 1)) {
+          pollutantSource = 'OpenWeatherMap';
+        } else if (values.any((v) => v > 100)) {
+          pollutantSource = 'WAQI';
+        } else {
+          pollutantSource = 'OpenWeatherMap or WAQI';
+        }
+      } else {
+        pollutantSource = 'AirVisual (IQAir)';
+      }
+    } else if (data.dataSource == 'WAQI') {
+      if (data.pollutants != null &&
+          data.pollutants!.values.any((v) => v > 0)) {
+        pollutantSource = 'WAQI';
+      } else {
+        pollutantSource = 'OpenWeatherMap';
+      }
+    } else if (data.dataSource == 'OpenWeatherMap') {
+      pollutantSource = 'OpenWeatherMap';
+    }
+
     return Container(
       padding: EdgeInsets.all(8 * fontSize),
       decoration: BoxDecoration(
@@ -701,7 +960,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Provided by: ${data.dataSource}',
+            'AQI: ${data.dataSource}',
+            style: TextStyle(
+              color: Colors.white54,
+              fontSize: 11 * fontSize,
+            ),
+          ),
+          Text(
+            'Pollutants: $pollutantSource',
             style: TextStyle(
               color: Colors.white54,
               fontSize: 11 * fontSize,
@@ -866,14 +1132,20 @@ class _FloatingNavBar extends StatelessWidget {
               ),
               _NavBarItem(
                 icon: Icons.location_on,
-                label: 'Location',
+                label: 'AQI Map',
                 selected: currentIndex == 2,
                 onTap: () => onTap(2),
               ),
               _NavBarItem(
+                icon: Icons.sensors_rounded,
+                label: 'Sensor',
+                selected: currentIndex == 3,
+                onTap: () => onTap(3),
+              ),
+              _NavBarItem(
                 icon: Icons.settings_rounded,
                 label: 'Settings',
-                selected: currentIndex == 3,
+                selected: currentIndex == 4,
                 onTap: () => onTap(3),
               ),
             ],
@@ -906,26 +1178,21 @@ class _NavBarItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: selected
-              ? Colors.blue.withValues(alpha: 0.2)
-              : Colors.transparent,
+          color: selected ? Colors.blue.withAlpha(51) : Colors.transparent,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color:
-                  selected ? Colors.white : Colors.white.withValues(alpha: 0.7),
+              color: selected ? Colors.white : Colors.white.withAlpha(179),
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: selected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.7),
+                color: selected ? Colors.white : Colors.white.withAlpha(179),
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               ),
@@ -1047,664 +1314,22 @@ class HourlyGraphPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _SettingsItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  const _SettingsItem({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-  });
+class RouteObserverProvider extends InheritedWidget {
+  final RouteObserver<PageRoute> observer;
+  const RouteObserverProvider(
+      {Key? key, required this.observer, required Widget child})
+      : super(key: key, child: child);
+  static RouteObserver<PageRoute> of(BuildContext context) {
+    final RouteObserverProvider? result =
+        context.dependOnInheritedWidgetOfExactType<RouteObserverProvider>();
+    assert(result != null, 'No RouteObserverProvider found in context');
+    return result!.observer;
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: const Color(0xFF142A5E).withValues(alpha: 0.6),
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white70),
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white54),
-        onTap: onTap,
-      ),
-    );
-  }
+  bool updateShouldNotify(RouteObserverProvider oldWidget) =>
+      observer != oldWidget.observer;
 }
 
-class _MapsScreen extends StatefulWidget {
-  const _MapsScreen();
 
-  @override
-  State<_MapsScreen> createState() => _MapsScreenState();
-}
 
-class _MapsScreenState extends State<_MapsScreen> {
-  final MapController _mapController = MapController();
-  LatLng _currentPosition = LatLng(37.7749, -122.4194);
-  bool _loadingLocation = true;
-  double _currentZoom = 13.0;
-  final List<Marker> _markers = [];
-  bool _showHeatmap = false;
-  bool _showTraffic = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeMap();
-
-    // Move to user location after map is initialized
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _goToUserLocation();
-      }
-    });
-  }
-
-  Future<void> _initializeMap() async {
-    try {
-      await _determinePosition();
-      _loadAirQualityData();
-      setState(() => _loadingLocation = false);
-    } catch (e) {
-      debugPrint("Map Error: $e");
-      setState(() => _loadingLocation = false);
-    }
-  }
-
-  Future<void> _determinePosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission != LocationPermission.whileInUse &&
-          permission != LocationPermission.always) return;
-    }
-
-    Position position = await Geolocator.getCurrentPosition();
-    setState(() {
-      _currentPosition = LatLng(position.latitude, position.longitude);
-    });
-  }
-
-  void _loadAirQualityData() {
-    // Example data - replace with real API calls
-    final locations = [
-      {'lat': 37.7749, 'lng': -122.4194, 'aqi': 75, 'city': 'San Francisco'},
-      {'lat': 34.0522, 'lng': -118.2437, 'aqi': 120, 'city': 'Los Angeles'},
-      {'lat': 40.7128, 'lng': -74.0060, 'aqi': 45, 'city': 'New York'},
-      {'lat': 41.8781, 'lng': -87.6298, 'aqi': 85, 'city': 'Chicago'},
-      {'lat': 29.7604, 'lng': -95.3698, 'aqi': 65, 'city': 'Houston'},
-    ];
-
-    // Add user location marker
-    _markers.add(
-      Marker(
-        width: 60,
-        height: 60,
-        point: _currentPosition,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.blue.withValues(alpha: 0.8),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withValues(alpha: 0.5),
-                blurRadius: 10,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: const Icon(Icons.person_pin_circle, color: Colors.white),
-        ),
-      ),
-    );
-
-    // Add city markers
-    for (var location in locations) {
-      final aqi = location['aqi'] as int;
-      final point =
-          LatLng(location['lat'] as double, location['lng'] as double);
-
-      _markers.add(
-        Marker(
-          width: 50,
-          height: 50,
-          point: point,
-          child: GestureDetector(
-            onTap: () => _showLocationDetails(
-              context,
-              location['city'] as String,
-              aqi,
-              point,
-            ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              decoration: BoxDecoration(
-                color: _getAqiColor(aqi),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white,
-                  width: _currentZoom > 10 ? 2 : 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  '$aqi',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: _currentZoom > 10 ? 14 : 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
-  void _showLocationDetails(
-    BuildContext context,
-    String city,
-    int aqi,
-    LatLng position,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF0E1F3D),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 20,
-                spreadRadius: 5,
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Drag handle
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // City name
-              Text(
-                city,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // AQI indicator
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _getAqiColor(aqi).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _getAqiColor(aqi)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'AQI: $aqi',
-                      style: TextStyle(
-                        color: _getAqiColor(aqi),
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _getAqiCategory(aqi),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Health recommendations
-              _buildHealthRecommendation(aqi),
-              const SizedBox(height: 20),
-
-              // Action buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildActionButton(
-                    Icons.directions,
-                    'Directions',
-                    () => _showDirections(position),
-                  ),
-                  _buildActionButton(
-                    Icons.history,
-                    'History',
-                    () => _showHistoricalData(city),
-                  ),
-                  _buildActionButton(
-                    Icons.share,
-                    'Share',
-                    () => _shareLocation(city, aqi),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Close button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.withValues(alpha: 0.2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHealthRecommendation(int aqi) {
-    String recommendation;
-    Color color;
-
-    if (aqi <= 50) {
-      recommendation = 'Air quality is satisfactory. Enjoy outdoor activities!';
-      color = Colors.green;
-    } else if (aqi <= 100) {
-      recommendation =
-          'Moderate air quality. Unusually sensitive people should consider reducing prolonged outdoor exertion.';
-      color = Colors.yellow;
-    } else if (aqi <= 150) {
-      recommendation =
-          'Unhealthy for sensitive groups. Children and people with respiratory diseases should limit outdoor exertion.';
-      color = Colors.orange;
-    } else if (aqi <= 200) {
-      recommendation =
-          'Unhealthy air quality. Everyone may begin to experience health effects. Limit outdoor activities.';
-      color = Colors.red;
-    } else {
-      recommendation =
-          'Very unhealthy or hazardous air quality. Avoid all outdoor exertion. Stay indoors with air purifiers if possible.';
-      color = Colors.purple;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.health_and_safety, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              recommendation,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-      IconData icon, String label, VoidCallback onPressed) {
-    return Column(
-      children: [
-        IconButton(
-          icon: Icon(icon, color: Colors.white),
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            backgroundColor: Colors.blue.withValues(alpha: 0.2),
-            padding: const EdgeInsets.all(12),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-      ],
-    );
-  }
-
-  void _showDirections(LatLng destination) {
-    // Implement directions functionality
-    debugPrint('Showing directions to $destination');
-  }
-
-  void _showHistoricalData(String city) {
-    // Implement historical data view
-    debugPrint('Showing historical data for $city');
-  }
-
-  void _shareLocation(String city, int aqi) {
-    // Implement share functionality
-    debugPrint('Sharing $city AQI: $aqi');
-  }
-
-  void _toggleHeatmap() {
-    setState(() => _showHeatmap = !_showHeatmap);
-  }
-
-  void _toggleTraffic() {
-    setState(() => _showTraffic = !_showTraffic);
-  }
-
-  void _goToUserLocation() {
-    try {
-      _mapController.move(_currentPosition, _currentZoom);
-    } catch (e) {
-      debugPrint('Map controller not ready: $e');
-    }
-  }
-
-  Color _getAqiColor(int aqi) {
-    if (aqi <= 50) return Colors.green;
-    if (aqi <= 100) return Colors.yellow;
-    if (aqi <= 150) return Colors.orange;
-    if (aqi <= 200) return Colors.red;
-    if (aqi <= 300) return Colors.purple;
-    return Colors.pink;
-  }
-
-  String _getAqiCategory(int aqi) {
-    if (aqi <= 50) return 'Good';
-    if (aqi <= 100) return 'Moderate';
-    if (aqi <= 150) return 'Unhealthy for SG';
-    if (aqi <= 200) return 'Unhealthy';
-    if (aqi <= 300) return 'Very Unhealthy';
-    return 'Hazardous';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A1A3D),
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Air Quality Map',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            shadows: [
-              Shadow(
-                color: Colors.black45,
-                blurRadius: 4,
-                offset: Offset(0, 1),
-              ),
-            ],
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _initializeMap,
-            tooltip: 'Refresh Data',
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Map
-          _loadingLocation
-              ? const Center(child: CircularProgressIndicator())
-              : FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentPosition,
-                    initialZoom: _currentZoom,
-                    maxZoom: 18,
-                    minZoom: 3,
-                    onPositionChanged: (position, hasGesture) {
-                      if (hasGesture) {
-                        setState(() => _currentZoom = position.zoom ?? 13.0);
-                      }
-                    },
-                  ),
-                  children: [
-                    // Base map layer
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.airqualityapp',
-                      retinaMode: true,
-                      maxZoom: 19,
-                      minZoom: 0,
-                    ),
-
-                    // Optional satellite layer
-                    if (_showTraffic)
-                      TileLayer(
-                        urlTemplate:
-                            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                        userAgentPackageName: 'com.example.airqualityapp',
-                        retinaMode: true,
-                      ),
-
-                    // Markers
-                    MarkerLayer(markers: _markers),
-
-                    // Optional heatmap overlay
-                    if (_showHeatmap)
-                      TileLayer(
-                        urlTemplate:
-                            'https://tiles.aqicn.org/tiles/usepa-aqi/{z}/{x}/{y}.png?token=9de100a0ae35eedd0d4a6e57088544427796f472',
-                        retinaMode: true,
-                      ),
-                  ],
-                ),
-
-          // Map controls
-          Positioned(
-            right: 16,
-            bottom: 100,
-            child: Column(
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'zoom_in',
-                  onPressed: () => _mapController.move(
-                    _mapController.camera.center,
-                    _mapController.camera.zoom + 1,
-                  ),
-                  backgroundColor: Colors.blue,
-                  child: const Icon(Icons.add),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'zoom_out',
-                  onPressed: () => _mapController.move(
-                    _mapController.camera.center,
-                    _mapController.camera.zoom - 1,
-                  ),
-                  backgroundColor: Colors.blue,
-                  child: const Icon(Icons.remove),
-                ),
-              ],
-            ),
-          ),
-
-          // Map type controls
-          Positioned(
-            left: 16,
-            top: 100,
-            child: Column(
-              children: [
-                _buildMapControlButton(
-                  Icons.layers,
-                  _showHeatmap ? 'Hide Heatmap' : 'Show Heatmap',
-                  _toggleHeatmap,
-                  _showHeatmap ? Colors.blue : Colors.white30,
-                ),
-                const SizedBox(height: 8),
-                _buildMapControlButton(
-                  Icons.satellite,
-                  _showTraffic ? 'Hide Satellite' : 'Show Satellite',
-                  _toggleTraffic,
-                  _showTraffic ? Colors.blue : Colors.white30,
-                ),
-              ],
-            ),
-          ),
-
-          // AQI Legend
-          Positioned(
-            left: 16,
-            bottom: 100,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'AQI SCALE',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLegendItem(Colors.green, '0-50', 'Good'),
-                  _buildLegendItem(Colors.yellow, '51-100', 'Moderate'),
-                  _buildLegendItem(Colors.orange, '101-150', 'Unhealthy SG'),
-                  _buildLegendItem(Colors.red, '151-200', 'Unhealthy'),
-                  _buildLegendItem(Colors.purple, '201-300', 'Very Unhealthy'),
-                  _buildLegendItem(Colors.pink, '300+', 'Hazardous'),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-
-      // Location button
-      floatingActionButton: FloatingActionButton(
-        onPressed: _goToUserLocation,
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.my_location),
-      ),
-    );
-  }
-
-  Widget _buildMapControlButton(
-    IconData icon,
-    String tooltip,
-    VoidCallback onPressed,
-    Color color,
-  ) {
-    return FloatingActionButton.small(
-      heroTag: tooltip,
-      onPressed: onPressed,
-      tooltip: tooltip,
-      backgroundColor: color,
-      child: Icon(icon, color: Colors.white),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String range, String label) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                range,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
